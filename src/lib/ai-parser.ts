@@ -1,33 +1,63 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
-import type { Facility, ParsedShiftRequest, ShiftCode, NurseRole } from "@/types";
+import type {
+  Facility,
+  ParsedFacilityIntent,
+  ShiftCode,
+  NurseRole,
+} from "@/types";
 
 const VALID_CODES: ShiftCode[] = ["AM", "PM", "NOC"];
 const VALID_ROLES: NurseRole[] = ["RN", "LPN", "CNA", "NP"];
 
-const SYSTEM_PROMPT = `You parse staffing requests for a nursing registry.
-Return STRICT JSON matching this TypeScript type, with no prose:
+const SYSTEM_PROMPT = `You triage SMS messages sent to a nursing registry. Read the inbound text and return STRICT JSON describing the sender's intent.
 
+Return one of these exact shapes (no prose, no code fences, no markdown):
+
+A) The facility wants to fill a shift:
 {
-  "date": "YYYY-MM-DD",            // ISO date in the facility's local timezone
-  "shiftCode": "AM" | "PM" | "NOC",// AM=morning, PM=afternoon/evening, NOC=overnight
+  "action": "request",
+  "date": "YYYY-MM-DD",
+  "shiftCode": "AM" | "PM" | "NOC",
   "role": "RN" | "LPN" | "CNA" | "NP",
-  "count": number,                 // number of clinicians needed (default 1)
+  "count": number,
   "notes": string | null
 }
 
-Rules:
-- "tonight" / "overnight" / "graveyard" → NOC
-- "morning" / "day" / "AM" → AM; "evening" / "PM" / "afternoon" → PM
-- If role is ambiguous, default to "CNA".
-- If date is missing, use the upcoming day matching the request.
-- Output only valid JSON, no code fences.`;
+B) The facility wants to cancel a shift or all open requests:
+{
+  "action": "cancel",
+  "scope": "all" | "specific",
+  "details": string | null
+}
 
-export const parseShiftRequest = async (
+C) The message is too short, a greeting, a thank-you, a question, or otherwise NOT a clear staffing request OR cancellation:
+{
+  "action": "unclear",
+  "reason": string
+}
+
+Strict rules:
+- Single letters, "a", "ok", "thanks", "hi", "yes", "no", greetings, status questions, or anything that isn't an explicit staffing request or cancellation -> action: "unclear".
+- "Cancel everything", "cancel all my shifts", "pull all", "we don't need anyone" -> cancel, scope: "all".
+- "Cancel the AM tomorrow", "drop the Friday CNA" -> cancel, scope: "specific", put the specifics in details.
+- Time-of-day keywords for requests: "tonight"/"overnight"/"graveyard" = NOC; "morning"/"day"/"AM" = AM; "afternoon"/"evening"/"PM" = PM.
+- If role is missing or ambiguous in a request, default to "CNA". If count is missing, default to 1.
+- If date is missing, use the next upcoming day matching the time-of-day in the message.
+- When in doubt, choose "unclear" over fabricating a request.
+- Output VALID JSON only.`;
+
+export const parseFacilitySms = async (
   text: string,
   facility: Facility,
   todayIso: string,
-): Promise<ParsedShiftRequest> => {
+): Promise<ParsedFacilityIntent> => {
+  const trimmed = text.trim();
+  // Cheap pre-filter: ignore obvious non-messages without burning tokens.
+  if (trimmed.length < 5 || trimmed.split(/\s+/).length < 2) {
+    return { action: "unclear", reason: "too short" };
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY missing");
 
@@ -39,7 +69,7 @@ export const parseShiftRequest = async (
     messages: [
       {
         role: "user",
-        content: `Today is ${todayIso}. Facility: ${facility.name} (${facility.city}, ${facility.state}).\n\nIncoming SMS:\n"""\n${text}\n"""`,
+        content: `Today is ${todayIso}. Facility: ${facility.name} (${facility.city}, ${facility.state}).\n\nIncoming SMS:\n"""\n${trimmed}\n"""`,
       },
     ],
   });
@@ -48,17 +78,45 @@ export const parseShiftRequest = async (
   const raw = block && block.type === "text" ? block.text.trim() : "";
   const cleaned = raw.replace(/^```json\s*/i, "").replace(/```$/, "").trim();
 
-  let parsed: ParsedShiftRequest;
+  let parsed: { action?: string; [k: string]: unknown };
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    throw new Error(`AI parser returned non-JSON: ${raw.slice(0, 200)}`);
+    return { action: "unclear", reason: "AI returned non-JSON" };
   }
 
-  if (!VALID_CODES.includes(parsed.shiftCode)) parsed.shiftCode = "AM";
-  if (!VALID_ROLES.includes(parsed.role)) parsed.role = "CNA";
-  if (!parsed.count || parsed.count < 1) parsed.count = 1;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(parsed.date)) parsed.date = todayIso;
+  if (parsed.action === "request") {
+    const shiftCode = VALID_CODES.includes(parsed.shiftCode as ShiftCode)
+      ? (parsed.shiftCode as ShiftCode)
+      : "AM";
+    const role = VALID_ROLES.includes(parsed.role as NurseRole)
+      ? (parsed.role as NurseRole)
+      : "CNA";
+    const count =
+      typeof parsed.count === "number" && parsed.count >= 1 ? parsed.count : 1;
+    const date =
+      typeof parsed.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(parsed.date)
+        ? parsed.date
+        : todayIso;
+    const notes =
+      typeof parsed.notes === "string" && parsed.notes.length > 0
+        ? parsed.notes
+        : undefined;
+    return { action: "request", date, shiftCode, role, count, notes };
+  }
 
-  return parsed;
+  if (parsed.action === "cancel") {
+    const scope = parsed.scope === "specific" ? "specific" : "all";
+    const details =
+      typeof parsed.details === "string" && parsed.details.length > 0
+        ? parsed.details
+        : undefined;
+    return { action: "cancel", scope, details };
+  }
+
+  return {
+    action: "unclear",
+    reason:
+      typeof parsed.reason === "string" ? parsed.reason : "could not classify",
+  };
 };

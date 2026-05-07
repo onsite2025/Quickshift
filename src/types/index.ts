@@ -180,3 +180,8 @@ export interface ParsedShiftRequest {
   count: number;
   notes?: string;
 }
+
+export type ParsedFacilityIntent =
+  | ({ action: "request" } & ParsedShiftRequest)
+  | { action: "cancel"; scope: "all" | "specific"; details?: string }
+  | { action: "unclear"; reason: string };

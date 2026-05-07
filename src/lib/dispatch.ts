@@ -182,6 +182,27 @@ export const claimShift = async (
   });
 };
 
+export const cancelOpenFacilityShifts = async (
+  facilityId: string,
+): Promise<{ count: number }> => {
+  const snap = await adminDb
+    .collection("shifts")
+    .where("facilityId", "==", facilityId)
+    .where("status", "in", ["draft", "open", "broadcasting"])
+    .get();
+
+  if (snap.empty) return { count: 0 };
+
+  const batch = adminDb.batch();
+  const now = Timestamp.now();
+  for (const doc of snap.docs) {
+    batch.update(doc.ref, { status: "cancelled", updatedAt: now });
+  }
+  await batch.commit();
+
+  return { count: snap.size };
+};
+
 export const sendClaimConfirmations = async (shift: Shift) => {
   const start = shift.start.toDate();
   const end = shift.end.toDate();

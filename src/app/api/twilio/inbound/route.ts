@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { twiml, validateTwilioSignature, normalizePhone } from "@/lib/sms";
-import { parseShiftRequest } from "@/lib/ai-parser";
+import { parseFacilitySms } from "@/lib/ai-parser";
 import {
   createShiftFromRequest,
   broadcastShift,
+  cancelOpenFacilityShifts,
   claimShift,
   sendClaimConfirmations,
 } from "@/lib/dispatch";
@@ -71,30 +72,53 @@ async function handleFacilityRequest(
     return xml(`No shift templates configured for ${facility.name}. Please add AM/PM/NOC templates in QuickShift first.`);
   }
 
-  let parsed;
+  let intent;
   try {
     const today = new Date().toISOString().slice(0, 10);
-    parsed = await parseShiftRequest(body, facility, today);
+    intent = await parseFacilitySms(body, facility, today);
   } catch (err) {
     console.error("AI parse error", err);
-    return xml("Couldn't parse that request. Please try: '1 CNA NOC tomorrow' or call your coordinator.");
+    return xml("Got your message — having trouble reading it. Your coordinator will follow up shortly.");
   }
 
+  if (intent.action === "unclear") {
+    return xml(
+      "Couldn't read that as a shift request. Try: '1 CNA NOC tonight'. To cancel open requests, text 'cancel all'. Reply STOP to opt out.",
+    );
+  }
+
+  if (intent.action === "cancel") {
+    try {
+      const { count } = await cancelOpenFacilityShifts(facility.id!);
+      const tail =
+        intent.scope === "specific"
+          ? "For shifts already confirmed with a nurse, your coordinator will reach out."
+          : "For shifts already claimed by a nurse, your coordinator will reach out.";
+      return xml(
+        `Cancelled ${count} open request${count === 1 ? "" : "s"}. ${tail}`,
+      );
+    } catch (err) {
+      console.error("cancel error", err);
+      return xml("Couldn't process that cancellation. Your coordinator will follow up.");
+    }
+  }
+
+  // intent.action === "request"
   try {
-    const { id } = await createShiftFromRequest(facility, parsed, body);
+    const { id } = await createShiftFromRequest(facility, intent, body);
     await broadcastShift(id);
     const template =
-      facility.shiftTemplates.find((t) => t.code === parsed.shiftCode) ??
+      facility.shiftTemplates.find((t) => t.code === intent.shiftCode) ??
       facility.shiftTemplates[0];
-    const [y, m, d] = parsed.date.split("-").map(Number);
+    const [y, m, d] = intent.date.split("-").map(Number);
     const friendlyDate = new Date(y!, m! - 1, d!).toLocaleDateString("en-US", {
       weekday: "short",
       month: "short",
       day: "numeric",
     });
     const roleStr =
-      parsed.count > 1 ? `${parsed.count} ${parsed.role}s` : `a ${parsed.role}`;
-    const shiftStr = template?.label ?? parsed.shiftCode;
+      intent.count > 1 ? `${intent.count} ${intent.role}s` : `a ${intent.role}`;
+    const shiftStr = template?.label ?? intent.shiftCode;
     return xml(
       `Got it — looking for ${roleStr} for ${shiftStr} on ${friendlyDate}. We'll text you as soon as it's claimed.`,
     );

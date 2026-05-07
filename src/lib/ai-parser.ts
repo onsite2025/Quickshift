@@ -37,21 +37,56 @@ C) The message is too short, a greeting, a thank-you, a question, or otherwise N
   "reason": string
 }
 
-Strict rules:
-- Single letters, "a", "ok", "thanks", "hi", "yes", "no", greetings, status questions, or anything that isn't an explicit staffing request or cancellation -> action: "unclear".
-- "Cancel everything", "cancel all my shifts", "pull all", "we don't need anyone" -> cancel, scope: "all".
-- "Cancel the AM tomorrow", "drop the Friday CNA" -> cancel, scope: "specific", put the specifics in details.
-- Time-of-day keywords for requests: "tonight"/"overnight"/"graveyard" = NOC; "morning"/"day"/"AM" = AM; "afternoon"/"evening"/"PM" = PM.
-- If role is missing or ambiguous in a request, default to "CNA". If count is missing, default to 1.
-- DATE rules — read carefully:
-  - The user message will start with "Today is <Weekday>, <Month> <Day>, <Year>". Use that as the anchor.
-  - "today" / "tonight" -> today's date.
-  - "tomorrow" -> today + 1.
-  - A bare day-of-week ("Wednesday", "Fri") -> the NEXT future occurrence of that weekday. If today IS that weekday, use today.
-  - "next Wednesday" -> the Wednesday in the following calendar week (skip the immediate one).
-  - Never return a date in the past. If you can't determine a date, use today's date.
-- When in doubt about role/shift/intent, choose "unclear" over fabricating a request.
-- Output VALID JSON only.`;
+Classification rules — READ CAREFULLY. Real coordinators write conversationally; do not require exact keywords.
+
+CANCELLATION — any message that signals the facility no longer needs the staffing they recently asked for. Examples include but are not limited to:
+- "cancel" / "cancel that" / "cancel everything" / "cancel my request"
+- "never mind" / "nm" / "nevermind"
+- "we got it covered" / "got it covered" / "covered" / "we're covered"
+- "all set" / "we're good" / "we're set" / "we're fine"
+- "found someone" / "filled internally" / "we found coverage"
+- "no longer needed" / "no need" / "disregard"
+- A message that starts with "actually..." or "wait..." and then expresses any of the above
+Scope: "all" unless the message clearly references ONE specific shift ("cancel the AM tomorrow", "drop the Friday CNA"), in which case scope: "specific" and put the specifics in details. Default to "all" when the scope is unclear.
+
+UNCLEAR — single letters, "a", "ok", "thanks", "hi", "yes", "no" (alone), greetings, generic questions, or anything that is NOT a staffing request and NOT a cancellation.
+
+REQUEST — any message asking to fill a shift. Time-of-day: "tonight"/"overnight"/"graveyard" -> NOC; "morning"/"day"/"AM" -> AM; "afternoon"/"evening"/"PM" -> PM. Default role to "CNA" if missing. Default count to 1 if missing.
+
+DATE rules:
+- The user message starts with "Today is <Weekday>, <Month> <Day>, <Year>". Use that as the anchor.
+- "today"/"tonight" -> today's date.
+- "tomorrow" -> today + 1 day.
+- A bare day-of-week ("Wednesday", "Fri") -> the NEXT future occurrence. If today IS that weekday, use today.
+- "next Wednesday" -> the Wednesday in the FOLLOWING calendar week (skip the immediate one).
+- Never return a past date. If you can't determine a date, use today.
+
+WORKED EXAMPLES (input -> JSON):
+
+"need 1 cna noc tonight"
+-> {"action":"request","date":"<today>","shiftCode":"NOC","role":"CNA","count":1,"notes":null}
+
+"actually pls cancel that, i got it covered"
+-> {"action":"cancel","scope":"all","details":null}
+
+"nm we're good"
+-> {"action":"cancel","scope":"all","details":null}
+
+"cancel the friday AM"
+-> {"action":"cancel","scope":"specific","details":"Friday AM"}
+
+"a"
+-> {"action":"unclear","reason":"single letter, no request"}
+
+"thanks!"
+-> {"action":"unclear","reason":"acknowledgment, not a request"}
+
+"2 RNs PM friday please"
+-> {"action":"request","date":"<next friday>","shiftCode":"PM","role":"RN","count":2,"notes":null}
+
+When intent is ambiguous between request and unclear, prefer "unclear". When intent is ambiguous between cancel and unclear, prefer "cancel" (false-positive cancellations are recoverable; phantom shifts are not).
+
+Output VALID JSON only. No prose, no code fences.`;
 
 export const parseFacilitySms = async (
   text: string,

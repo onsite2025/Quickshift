@@ -30,6 +30,12 @@ if (!getApps().length) {
   app = getApps()[0]!;
 }
 
-export const adminDb: Firestore = getFirestore(app);
+const _adminDb = getFirestore(app);
+try {
+  _adminDb.settings({ ignoreUndefinedProperties: true });
+} catch {
+  // settings can only be set once; ignore on hot reload
+}
+export const adminDb: Firestore = _adminDb;
 export const adminAuth: Auth = getAuth(app);
 export const adminStorage: Storage = getStorage(app);

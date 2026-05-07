@@ -82,9 +82,21 @@ async function handleFacilityRequest(
 
   try {
     const { id } = await createShiftFromRequest(facility, parsed, body);
-    const result = await broadcastShift(id);
+    await broadcastShift(id);
+    const template =
+      facility.shiftTemplates.find((t) => t.code === parsed.shiftCode) ??
+      facility.shiftTemplates[0];
+    const [y, m, d] = parsed.date.split("-").map(Number);
+    const friendlyDate = new Date(y!, m! - 1, d!).toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+    const roleStr =
+      parsed.count > 1 ? `${parsed.count} ${parsed.role}s` : `a ${parsed.role}`;
+    const shiftStr = template?.label ?? parsed.shiftCode;
     return xml(
-      `Got it. Sent to ${result.sent} ${parsed.role}${result.sent === 1 ? "" : "s"} for ${parsed.shiftCode} on ${parsed.date}. We'll text you when it's claimed.`,
+      `Got it — looking for ${roleStr} for ${shiftStr} on ${friendlyDate}. We'll text you as soon as it's claimed.`,
     );
   } catch (err) {
     console.error("dispatch error", err);

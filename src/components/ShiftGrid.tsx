@@ -36,6 +36,8 @@ export function ShiftGrid({
   const shiftLookup = useMemo(() => {
     const map = new Map<string, Shift[]>();
     for (const s of shifts) {
+      // Cancelled shifts shouldn't show on the coverage grid at all.
+      if (s.status === "cancelled") continue;
       const startDate = s.start.toDate();
       const dayKey = format(startDate, "yyyy-MM-dd");
       const nurseKey = s.nurseId ?? "__open__";

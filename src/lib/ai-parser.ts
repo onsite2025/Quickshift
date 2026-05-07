@@ -43,8 +43,14 @@ Strict rules:
 - "Cancel the AM tomorrow", "drop the Friday CNA" -> cancel, scope: "specific", put the specifics in details.
 - Time-of-day keywords for requests: "tonight"/"overnight"/"graveyard" = NOC; "morning"/"day"/"AM" = AM; "afternoon"/"evening"/"PM" = PM.
 - If role is missing or ambiguous in a request, default to "CNA". If count is missing, default to 1.
-- If date is missing, use the next upcoming day matching the time-of-day in the message.
-- When in doubt, choose "unclear" over fabricating a request.
+- DATE rules — read carefully:
+  - The user message will start with "Today is <Weekday>, <Month> <Day>, <Year>". Use that as the anchor.
+  - "today" / "tonight" -> today's date.
+  - "tomorrow" -> today + 1.
+  - A bare day-of-week ("Wednesday", "Fri") -> the NEXT future occurrence of that weekday. If today IS that weekday, use today.
+  - "next Wednesday" -> the Wednesday in the following calendar week (skip the immediate one).
+  - Never return a date in the past. If you can't determine a date, use today's date.
+- When in doubt about role/shift/intent, choose "unclear" over fabricating a request.
 - Output VALID JSON only.`;
 
 export const parseFacilitySms = async (
@@ -61,6 +67,14 @@ export const parseFacilitySms = async (
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY missing");
 
+  const [ty, tm, td] = todayIso.split("-").map(Number);
+  const todayLabel = new Date(ty!, tm! - 1, td!).toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
   const client = new Anthropic({ apiKey });
   const message = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
@@ -69,7 +83,7 @@ export const parseFacilitySms = async (
     messages: [
       {
         role: "user",
-        content: `Today is ${todayIso}. Facility: ${facility.name} (${facility.city}, ${facility.state}).\n\nIncoming SMS:\n"""\n${trimmed}\n"""`,
+        content: `Today is ${todayLabel} (ISO ${todayIso}). Facility: ${facility.name} (${facility.city}, ${facility.state}).\n\nIncoming SMS:\n"""\n${trimmed}\n"""`,
       },
     ],
   });

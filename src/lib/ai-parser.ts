@@ -7,6 +7,12 @@ import type {
   ShiftCode,
   NurseRole,
 } from "@/types";
+import type { ConversationTurn, OpenShiftSummary } from "./sms-log";
+
+export interface ParseContext {
+  recentMessages?: ConversationTurn[];
+  openShifts?: OpenShiftSummary[];
+}
 
 const VALID_CODES: ShiftCode[] = ["AM", "PM", "NOC"];
 const VALID_ROLES: NurseRole[] = ["RN", "LPN", "CNA", "NP"];
@@ -107,8 +113,20 @@ WORKED EXAMPLES (input -> output JSON):
 "thanks!"
 -> {"action":"unclear","reason":"acknowledgment, not a request"}
 
+CONVERSATION CONTEXT (when provided):
+The user message may include "Recent conversation" and "Currently open shifts" sections from THIS facility. Use them to resolve ellipsis and references in short follow-up messages:
+- "make it 2" / "double it" / "two of them" -> MODIFY of the most recent open shift, count adjusted.
+- "switch to friday" / "move it to friday" -> MODIFY: change the date of the most recent open shift; keep role/shiftCode the same.
+- "actually X instead of Y" -> MODIFY (replace prior open shifts with X).
+- "and also a PM" / "add a PM too" / "also need an RN" -> REQUEST (ADDS a new shift on top of existing ones; do NOT cancel anything).
+- "the second one" / "that one" -> reference to a specific open shift; treat as cancel/modify of just that one (scope: "specific" or include only that spec).
+- A short ambiguous message with NO prior context -> UNCLEAR.
+
+The "Currently open shifts" list tells you what role/shiftCode/date to inherit when the latest message doesn't specify them.
+
 TIE-BREAKING:
-- Ambiguous between request and modify -> prefer modify if the message contains "actually", "wait", "instead", "scratch", "change", "switch", "let's do".
+- Ambiguous between request and modify -> prefer MODIFY if the message contains "actually", "wait", "instead", "scratch", "change", "switch", "make it", "let's do" — and there are open shifts to modify.
+- Ambiguous between request and modify -> prefer REQUEST (additive) if the message starts with "and", "also", "plus", "add" — these mean ADD, not REPLACE.
 - Ambiguous between modify and cancel -> if the message provides a replacement spec, MODIFY; if no replacement, CANCEL.
 - Ambiguous between cancel and unclear -> prefer CANCEL (false-positive cancel is recoverable; phantom shifts are not).
 
@@ -140,9 +158,16 @@ export const parseFacilitySms = async (
   text: string,
   facility: Facility,
   todayIso: string,
+  context: ParseContext = {},
 ): Promise<ParsedFacilityIntent> => {
   const trimmed = text.trim();
-  if (trimmed.length < 5 || trimmed.split(/\s+/).length < 2) {
+  // The pre-filter still helps for empty / one-letter messages that arrive
+  // with no prior context. With context, even short messages can be valid
+  // ("make it 2") so we let those through.
+  const hasContext =
+    (context.recentMessages?.length ?? 0) > 0 ||
+    (context.openShifts?.length ?? 0) > 0;
+  if (!hasContext && (trimmed.length < 5 || trimmed.split(/\s+/).length < 2)) {
     return { action: "unclear", reason: "too short" };
   }
 
@@ -157,17 +182,42 @@ export const parseFacilitySms = async (
     day: "numeric",
   });
 
+  const userParts = [
+    `Today is ${todayLabel} (ISO ${todayIso}). Facility: ${facility.name} (${facility.city}, ${facility.state}).`,
+  ];
+
+  if (context.recentMessages && context.recentMessages.length > 0) {
+    userParts.push("\nRecent conversation (oldest first):");
+    for (const turn of context.recentMessages) {
+      const time = turn.ts.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      const who = turn.direction === "inbound" ? "facility" : "system";
+      userParts.push(`[${time}] ${who}: ${turn.body}`);
+    }
+  }
+
+  if (context.openShifts && context.openShifts.length > 0) {
+    userParts.push("\nCurrently open / scheduled shifts for this facility:");
+    for (const s of context.openShifts) {
+      const claimed = s.nurseName ? ` (claimed by ${s.nurseName})` : "";
+      userParts.push(
+        `- ${s.date} ${s.shiftCode} ${s.role} [${s.status}]${claimed}`,
+      );
+    }
+  } else if (context.openShifts) {
+    userParts.push("\nThis facility has no open shifts right now.");
+  }
+
+  userParts.push(`\nIncoming SMS:\n"""\n${trimmed}\n"""`);
+
   const client = new Anthropic({ apiKey });
   const message = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 512,
     system: SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: `Today is ${todayLabel} (ISO ${todayIso}). Facility: ${facility.name} (${facility.city}, ${facility.state}).\n\nIncoming SMS:\n"""\n${trimmed}\n"""`,
-      },
-    ],
+    messages: [{ role: "user", content: userParts.join("\n") }],
   });
 
   const block = message.content.find((b) => b.type === "text");

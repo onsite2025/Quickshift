@@ -173,6 +173,17 @@ export interface Message {
   createdAt: Timestamp;
 }
 
+export interface SmsLogEntry {
+  id?: string;
+  direction: "inbound" | "outbound";
+  facilityId?: string;
+  nurseId?: string;
+  phone: string;
+  body: string;
+  twilioSid?: string;
+  createdAt: Timestamp;
+}
+
 export interface ParsedShiftRequest {
   date: string;
   shiftCode: ShiftCode;

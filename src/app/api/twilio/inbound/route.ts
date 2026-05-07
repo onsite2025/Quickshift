@@ -10,6 +10,11 @@ import {
   sendClaimConfirmations,
 } from "@/lib/dispatch";
 import { clockIn, clockOut } from "@/lib/timekeeping";
+import {
+  logFacilitySms,
+  recentFacilityConversation,
+  openFacilityShifts,
+} from "@/lib/sms-log";
 import type { Facility, Nurse, ParsedShiftRequest } from "@/types";
 
 export const runtime = "nodejs";
@@ -68,21 +73,54 @@ async function handleFacilityRequest(
   body: string,
 ) {
   const facility: Facility = { id: facilityDoc.id, ...(facilityDoc.data() as Facility) };
+  const facilityPhone = facility.inboundPhone ?? "";
+
+  // Fetch context BEFORE logging the new inbound, so the latest message is
+  // passed in via the prompt, not duplicated in "Recent conversation".
+  const [recentMessages, openShifts] = await Promise.all([
+    recentFacilityConversation(facility.id!),
+    openFacilityShifts(facility.id!),
+  ]);
+
+  await logFacilitySms({
+    facilityId: facility.id!,
+    phone: facilityPhone,
+    body,
+    direction: "inbound",
+  });
+
+  const reply = async (text: string) => {
+    await logFacilitySms({
+      facilityId: facility.id!,
+      phone: facilityPhone,
+      body: text,
+      direction: "outbound",
+    });
+    return xml(text);
+  };
+
   if (!facility.shiftTemplates?.length) {
-    return xml(`No shift templates configured for ${facility.name}. Please add AM/PM/NOC templates in QuickShift first.`);
+    return reply(
+      `No shift templates configured for ${facility.name}. Please add AM/PM/NOC templates in QuickShift first.`,
+    );
   }
 
   let intent;
   try {
     const today = new Date().toISOString().slice(0, 10);
-    intent = await parseFacilitySms(body, facility, today);
+    intent = await parseFacilitySms(body, facility, today, {
+      recentMessages,
+      openShifts,
+    });
   } catch (err) {
     console.error("AI parse error", err);
-    return xml("Got your message — having trouble reading it. Your coordinator will follow up shortly.");
+    return reply(
+      "Got your message — having trouble reading it. Your coordinator will follow up shortly.",
+    );
   }
 
   if (intent.action === "unclear") {
-    return xml(
+    return reply(
       "Couldn't read that as a shift request. Try: '1 CNA NOC tonight'. To cancel open requests, text 'cancel all'. Reply STOP to opt out.",
     );
   }
@@ -94,12 +132,14 @@ async function handleFacilityRequest(
         intent.scope === "specific"
           ? "For shifts already confirmed with a nurse, your coordinator will reach out."
           : "For shifts already claimed by a nurse, your coordinator will reach out.";
-      return xml(
+      return reply(
         `Cancelled ${count} open request${count === 1 ? "" : "s"}. ${tail}`,
       );
     } catch (err) {
       console.error("cancel error", err);
-      return xml("Couldn't process that cancellation. Your coordinator will follow up.");
+      return reply(
+        "Couldn't process that cancellation. Your coordinator will follow up.",
+      );
     }
   }
 
@@ -128,16 +168,18 @@ async function handleFacilityRequest(
         priorCancelled > 0
           ? `Cancelled ${priorCancelled} prior open request${priorCancelled === 1 ? "" : "s"}. `
           : "";
-      return xml(
+      return reply(
         `${prior}Updated — now looking for ${summary}. We'll text you as soon as ${createdCount === 1 ? "it's" : "they're"} claimed.`,
       );
     }
-    return xml(
+    return reply(
       `Got it — looking for ${summary}. We'll text you as soon as ${createdCount === 1 ? "it's" : "they're"} claimed.`,
     );
   } catch (err) {
     console.error("dispatch error", err);
-    return xml("Something went wrong creating that shift. We'll follow up shortly.");
+    return reply(
+      "Something went wrong creating that shift. We'll follow up shortly.",
+    );
   }
 }
 

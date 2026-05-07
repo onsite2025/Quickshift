@@ -2,69 +2,78 @@
 
 import { useEffect, useState } from "react";
 import { getDocs, orderBy, query } from "firebase/firestore";
-import { Upload } from "lucide-react";
+import { ShieldCheck, Upload } from "lucide-react";
 import { format } from "date-fns";
 import { Header } from "@/components/Header";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
+import { EmptyState } from "@/components/EmptyState";
+import { Modal } from "@/components/Modal";
+import { UploadDocumentForm } from "@/components/forms/UploadDocumentForm";
 import { documentsCol } from "@/lib/collections";
 import type { ComplianceDocument } from "@/types";
 
 const STATUS_COLOR: Record<ComplianceDocument["status"], string> = {
-  valid: "bg-emerald-50 text-emerald-700",
-  expiring: "bg-amber-50 text-amber-700",
-  expired: "bg-rose-50 text-rose-700",
-  pending_review: "bg-slate-100 text-slate-600",
+  valid: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  expiring: "bg-amber-50 text-amber-700 ring-amber-200",
+  expired: "bg-rose-50 text-rose-700 ring-rose-200",
+  pending_review: "bg-ink-100 text-ink-600 ring-ink-200",
 };
 
 export default function CompliancePage() {
   const [docs, setDocs] = useState<ComplianceDocument[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     (async () => {
       try {
         const snap = await getDocs(query(documentsCol, orderBy("uploadedAt", "desc")));
-        setDocs(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load documents");
+        setDocs(snap.docs.map((d) => ({ id: d.id, ...(d.data() as ComplianceDocument) })));
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [tick]);
 
   return (
     <>
-      <Header title="Compliance" />
+      <Header title="Compliance" description="Documents, expirations, and auto-blocking." />
       <main className="flex-1 p-6">
         <PageHeader
-          title="Compliance"
-          description="Licenses, certifications, and other clinician documents."
+          title="Documents"
           actions={
-            <button className="btn-primary gap-2">
-              <Upload className="h-4 w-4" /> Upload document
+            <button onClick={() => setOpen(true)} className="btn-primary">
+              <Upload className="h-4 w-4" /> Upload
             </button>
           }
         />
-        {error && (
-          <div className="card mb-6 border-rose-200 bg-rose-50 text-sm text-rose-700">{error}</div>
-        )}
+
         {loading ? (
-          <div className="card text-sm text-slate-500">Loading documents…</div>
+          <div className="card text-sm text-ink-500">Loading documents…</div>
+        ) : docs.length === 0 ? (
+          <EmptyState
+            icon={ShieldCheck}
+            title="No documents uploaded"
+            description="Upload licenses, certifications, and vaccination records. Expiring docs will trigger nurse blocking automatically."
+            action={
+              <button onClick={() => setOpen(true)} className="btn-primary">
+                <Upload className="h-4 w-4" /> Upload first document
+              </button>
+            }
+          />
         ) : (
           <DataTable
             rows={docs}
-            empty="No documents uploaded yet."
             columns={[
+              { key: "nurseName", header: "Nurse" },
               { key: "name", header: "Document" },
               { key: "type", header: "Type" },
               {
                 key: "expiresAt",
                 header: "Expires",
-                render: (d) =>
-                  d.expiresAt ? format(d.expiresAt.toDate(), "MMM d, yyyy") : "—",
+                render: (d) => (d.expiresAt ? format(d.expiresAt.toDate(), "MMM d, yyyy") : "—"),
               },
               {
                 key: "status",
@@ -77,14 +86,9 @@ export default function CompliancePage() {
               },
               {
                 key: "fileUrl",
-                header: "File",
+                header: "",
                 render: (d) => (
-                  <a
-                    href={d.fileUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-brand-600 hover:underline"
-                  >
+                  <a href={d.fileUrl} target="_blank" rel="noreferrer" className="text-brand-600 hover:underline">
                     View
                   </a>
                 ),
@@ -93,6 +97,10 @@ export default function CompliancePage() {
           />
         )}
       </main>
+
+      <Modal open={open} onClose={() => setOpen(false)} title="Upload document" description="Stored in Firebase Storage. Expiration drives auto-blocking.">
+        <UploadDocumentForm onClose={() => setOpen(false)} onCreated={() => setTick((t) => t + 1)} />
+      </Modal>
     </>
   );
 }

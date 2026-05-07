@@ -2,41 +2,42 @@ interface Column<T> {
   key: keyof T | string;
   header: string;
   render?: (row: T) => React.ReactNode;
+  className?: string;
 }
 
 export function DataTable<T extends { id?: string }>({
   rows,
   columns,
-  empty = "No records yet.",
+  onRowClick,
 }: {
   rows: T[];
   columns: Column<T>[];
-  empty?: string;
+  onRowClick?: (row: T) => void;
 }) {
-  if (rows.length === 0) {
-    return <div className="card text-sm text-slate-500">{empty}</div>;
-  }
   return (
-    <div className="card overflow-hidden p-0">
-      <table className="min-w-full divide-y divide-slate-200">
-        <thead className="bg-slate-50">
+    <div className="card-flush">
+      <table className="table-base">
+        <thead>
           <tr>
             {columns.map((c) => (
-              <th
-                key={String(c.key)}
-                className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
-              >
+              <th key={String(c.key)} className={c.className}>
                 {c.header}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100 bg-white">
+        <tbody className="divide-y divide-ink-100/80 bg-white">
           {rows.map((row) => (
-            <tr key={row.id} className="hover:bg-slate-50">
+            <tr
+              key={row.id}
+              onClick={onRowClick ? () => onRowClick(row) : undefined}
+              className={onRowClick ? "cursor-pointer" : ""}
+            >
               {columns.map((c) => (
-                <td key={String(c.key)} className="px-4 py-3 text-sm text-slate-700">
-                  {c.render ? c.render(row) : String((row as Record<string, unknown>)[c.key as string] ?? "")}
+                <td key={String(c.key)} className={c.className}>
+                  {c.render
+                    ? c.render(row)
+                    : String((row as Record<string, unknown>)[c.key as string] ?? "")}
                 </td>
               ))}
             </tr>

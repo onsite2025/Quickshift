@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   Clock,
   Receipt,
+  Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -25,14 +26,20 @@ const NAV = [
 
 export function Sidebar() {
   const pathname = usePathname();
+
   return (
-    <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white md:block">
-      <div className="flex h-16 items-center border-b border-slate-200 px-6">
-        <Link href="/dashboard" className="text-lg font-bold text-brand-700">
-          QuickShift
-        </Link>
+    <aside className="hidden w-64 shrink-0 flex-col border-r border-ink-800/40 bg-ink-950 text-ink-200 md:flex">
+      <div className="flex h-16 items-center gap-3 border-b border-ink-800/60 px-5">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-white shadow-soft">
+          <Activity className="h-5 w-5" strokeWidth={2.4} />
+        </div>
+        <div className="flex flex-col leading-tight">
+          <span className="text-sm font-semibold tracking-tight text-white">QuickShift</span>
+          <span className="text-[11px] text-ink-400">QuickCare Nursing Registry</span>
+        </div>
       </div>
-      <nav className="space-y-1 p-3">
+
+      <nav className="flex-1 space-y-0.5 px-3 py-4">
         {NAV.map((item) => {
           const Icon = item.icon;
           const active = pathname === item.href || pathname?.startsWith(item.href + "/");
@@ -41,18 +48,32 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition",
+                "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 active
-                  ? "bg-brand-50 text-brand-700"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  ? "bg-white/5 text-white"
+                  : "text-ink-300 hover:bg-white/5 hover:text-white",
               )}
             >
-              <Icon className="h-4 w-4" />
+              <Icon
+                className={cn(
+                  "h-4 w-4 transition-colors",
+                  active ? "text-brand-400" : "text-ink-400 group-hover:text-ink-200",
+                )}
+              />
               {item.label}
             </Link>
           );
         })}
       </nav>
+
+      <div className="border-t border-ink-800/60 p-4">
+        <div className="rounded-lg bg-ink-900/70 p-3 text-xs text-ink-400">
+          <p className="font-medium text-ink-200">Live dispatch</p>
+          <p className="mt-1 leading-relaxed">
+            Inbound SMS routed from Twilio. AI-parsed and broadcast to compliant clinicians.
+          </p>
+        </div>
+      </div>
     </aside>
   );
 }

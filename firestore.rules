@@ -7,6 +7,9 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Server (Firebase Admin SDK) bypasses rules for inbound SMS, dispatch, etc.
+    // Client app reads/writes require an authenticated staff user.
+
     match /nurses/{nurseId} {
       allow read, write: if isSignedIn();
     }
@@ -16,7 +19,11 @@ service cloud.firestore {
     }
 
     match /shifts/{shiftId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSignedIn();
+      // Clients can create draft shifts; status transitions to open/confirmed
+      // happen via the server (admin SDK) in response to inbound SMS.
+      allow create, update: if isSignedIn();
+      allow delete: if isSignedIn();
     }
 
     match /documents/{documentId} {
@@ -24,7 +31,10 @@ service cloud.firestore {
     }
 
     match /timesheets/{timesheetId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSignedIn();
+      // Approval is a client action; clock-in/out happens server-side.
+      allow update: if isSignedIn();
+      allow create, delete: if isSignedIn();
     }
 
     match /invoices/{invoiceId} {

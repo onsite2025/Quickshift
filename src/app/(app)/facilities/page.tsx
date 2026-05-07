@@ -2,69 +2,93 @@
 
 import { useEffect, useState } from "react";
 import { getDocs, orderBy, query } from "firebase/firestore";
-import { Plus } from "lucide-react";
+import { Building2, Plus } from "lucide-react";
 import { Header } from "@/components/Header";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
+import { EmptyState } from "@/components/EmptyState";
+import { Modal } from "@/components/Modal";
+import { FacilityForm } from "@/components/forms/FacilityForm";
 import { facilitiesCol } from "@/lib/collections";
 import type { Facility } from "@/types";
 
 export default function FacilitiesPage() {
   const [facilities, setFacilities] = useState<Facility[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     (async () => {
       try {
         const snap = await getDocs(query(facilitiesCol, orderBy("name")));
-        setFacilities(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load facilities");
+        setFacilities(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Facility) })));
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [tick]);
 
   return (
     <>
-      <Header title="Facilities" />
+      <Header title="Facilities" description="Client locations that request shifts via SMS." />
       <main className="flex-1 p-6">
         <PageHeader
-          title="Facilities"
-          description="Client locations that request shifts."
+          title="Facility clients"
           actions={
-            <button className="btn-primary gap-2">
+            <button onClick={() => setOpen(true)} className="btn-primary">
               <Plus className="h-4 w-4" /> Add facility
             </button>
           }
         />
-        {error && (
-          <div className="card mb-6 border-rose-200 bg-rose-50 text-sm text-rose-700">{error}</div>
-        )}
+
         {loading ? (
-          <div className="card text-sm text-slate-500">Loading facilities…</div>
+          <div className="card text-sm text-ink-500">Loading facilities…</div>
+        ) : facilities.length === 0 ? (
+          <EmptyState
+            icon={Building2}
+            title="No facilities yet"
+            description="Add a facility and assign their inbound SMS number. Configure AM/PM/NOC templates so the AI can map their requests."
+            action={
+              <button onClick={() => setOpen(true)} className="btn-primary">
+                <Plus className="h-4 w-4" /> Add facility
+              </button>
+            }
+          />
         ) : (
           <DataTable
             rows={facilities}
-            empty="No facilities yet."
             columns={[
-              { key: "name", header: "Name" },
+              { key: "name", header: "Facility" },
               {
                 key: "city",
                 header: "Location",
                 render: (f) => `${f.city}, ${f.state}`,
               },
               { key: "contactName", header: "Contact" },
-              { key: "contactPhone", header: "Phone" },
+              { key: "inboundPhone", header: "Inbound SMS" },
+              {
+                key: "shiftTemplates",
+                header: "Templates",
+                render: (f) => (
+                  <div className="flex flex-wrap gap-1">
+                    {f.shiftTemplates?.map((t) => (
+                      <span key={t.code} className="badge bg-brand-50 text-brand-700 ring-brand-200">
+                        {t.code} {t.startTime}–{t.endTime}
+                      </span>
+                    )) ?? <span className="text-ink-400">none</span>}
+                  </div>
+                ),
+              },
               {
                 key: "active",
                 header: "Status",
                 render: (f) => (
                   <span
-                    className={`badge ${
-                      f.active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"
+                    className={`badge ring-1 ring-inset ${
+                      f.active
+                        ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                        : "bg-ink-100 text-ink-600 ring-ink-200"
                     }`}
                   >
                     {f.active ? "active" : "inactive"}
@@ -75,6 +99,10 @@ export default function FacilitiesPage() {
           />
         )}
       </main>
+
+      <Modal open={open} onClose={() => setOpen(false)} title="Add facility" description="Configure shift templates so AI dispatch knows their hours." size="lg">
+        <FacilityForm onClose={() => setOpen(false)} onCreated={() => setTick((t) => t + 1)} />
+      </Modal>
     </>
   );
 }

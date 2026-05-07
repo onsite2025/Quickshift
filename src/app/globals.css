@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 :root {
-  --background: 248 250 252;
-  --foreground: 15 23 42;
+  --bg: 247 248 251;
+  --fg: 20 24 38;
 }
 
 html,
@@ -13,28 +13,62 @@ body {
 }
 
 body {
-  background-color: rgb(var(--background));
-  color: rgb(var(--foreground));
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background-color: rgb(var(--bg));
+  color: rgb(var(--fg));
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
 }
 
 @layer components {
   .card {
-    @apply rounded-xl border border-slate-200 bg-white p-5 shadow-sm;
+    @apply rounded-xl border border-ink-200/70 bg-white p-5 shadow-soft;
+  }
+  .card-flush {
+    @apply rounded-xl border border-ink-200/70 bg-white shadow-soft overflow-hidden;
   }
   .btn {
-    @apply inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 disabled:opacity-50 disabled:pointer-events-none;
   }
   .btn-primary {
     @apply btn bg-brand-600 text-white hover:bg-brand-700;
   }
+  .btn-secondary {
+    @apply btn bg-white text-ink-800 border border-ink-200 hover:bg-ink-50;
+  }
   .btn-ghost {
-    @apply btn text-slate-700 hover:bg-slate-100;
+    @apply btn text-ink-700 hover:bg-ink-100;
+  }
+  .btn-danger {
+    @apply btn bg-rose-600 text-white hover:bg-rose-700;
   }
   .input {
-    @apply w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100;
+    @apply w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100;
+  }
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-ink-700;
   }
   .badge {
-    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset;
+  }
+  .table-base {
+    @apply min-w-full divide-y divide-ink-200/70 text-sm;
+  }
+  .table-base thead {
+    @apply bg-ink-50/70;
+  }
+  .table-base th {
+    @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-ink-500;
+  }
+  .table-base td {
+    @apply px-4 py-3 text-ink-700 align-middle;
+  }
+  .table-base tbody tr {
+    @apply hover:bg-ink-50/60 transition-colors;
+  }
+  .skeleton {
+    @apply animate-pulse rounded-md bg-ink-100;
+  }
+  .kbd {
+    @apply inline-flex items-center rounded border border-ink-200 bg-ink-50 px-1.5 py-0.5 font-mono text-[11px] text-ink-600;
   }
 }

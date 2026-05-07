@@ -30,8 +30,14 @@ export default function ShiftsPage() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [nurses, setNurses] = useState<Nurse[]>([]);
   const [view, setView] = useState<"grid" | "list">("grid");
+  const [showCancelled, setShowCancelled] = useState(false);
   const [open, setOpen] = useState(false);
   const [tick, setTick] = useState(0);
+
+  const visibleShifts = showCancelled
+    ? shifts
+    : shifts.filter((s) => s.status !== "cancelled");
+  const cancelledCount = shifts.filter((s) => s.status === "cancelled").length;
 
   useEffect(() => {
     (async () => {
@@ -68,6 +74,14 @@ export default function ShiftsPage() {
           title="Shifts"
           actions={
             <>
+              {view === "list" && cancelledCount > 0 && (
+                <button
+                  onClick={() => setShowCancelled((v) => !v)}
+                  className="btn-ghost text-xs"
+                >
+                  {showCancelled ? "Hide" : "Show"} cancelled ({cancelledCount})
+                </button>
+              )}
               <div className="flex rounded-lg border border-ink-200 bg-white p-0.5">
                 {(["grid", "list"] as const).map((m) => (
                   <button
@@ -92,7 +106,7 @@ export default function ShiftsPage() {
           <ShiftGrid nurses={nurses} shifts={shifts} />
         ) : (
           <DataTable
-            rows={shifts}
+            rows={visibleShifts}
             columns={[
               {
                 key: "date",

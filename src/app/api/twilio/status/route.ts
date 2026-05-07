@@ -10,7 +10,9 @@ export async function POST(req: NextRequest) {
     params[k] = String(v);
   });
 
-  const url = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/twilio/status`;
+  const proto = req.headers.get("x-forwarded-proto") ?? "https";
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+  const url = `${proto}://${host}/api/twilio/status`;
   const signature = req.headers.get("x-twilio-signature");
   if (!validateTwilioSignature(signature, url, params)) {
     return new NextResponse("invalid signature", { status: 403 });

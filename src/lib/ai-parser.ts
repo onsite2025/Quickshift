@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type {
   Facility,
   ParsedFacilityIntent,
+  ParsedShiftRequest,
   ShiftCode,
   NurseRole,
 } from "@/types";
@@ -10,61 +11,86 @@ import type {
 const VALID_CODES: ShiftCode[] = ["AM", "PM", "NOC"];
 const VALID_ROLES: NurseRole[] = ["RN", "LPN", "CNA", "NP"];
 
-const SYSTEM_PROMPT = `You triage SMS messages sent to a nursing registry. Read the inbound text and return STRICT JSON describing the sender's intent.
+const SYSTEM_PROMPT = `You triage SMS messages sent to a nursing-registry dispatcher. Read the inbound text and return STRICT JSON describing the sender's intent. No prose, no code fences.
 
-Return one of these exact shapes (no prose, no code fences, no markdown):
+Return one of these four exact shapes:
 
-A) The facility wants to fill a shift:
+A) REQUEST — facility wants to fill one or more shifts.
 {
   "action": "request",
-  "date": "YYYY-MM-DD",
-  "shiftCode": "AM" | "PM" | "NOC",
-  "role": "RN" | "LPN" | "CNA" | "NP",
-  "count": number,
-  "notes": string | null
+  "shifts": [
+    {"date":"YYYY-MM-DD","shiftCode":"AM"|"PM"|"NOC","role":"RN"|"LPN"|"CNA"|"NP","count":number,"notes":string|null}
+  ]
 }
 
-B) The facility wants to cancel a shift or all open requests:
+B) MODIFY — facility wants to REPLACE a previous open request with one or more new shifts.
 {
-  "action": "cancel",
-  "scope": "all" | "specific",
-  "details": string | null
+  "action": "modify",
+  "shifts": [
+    {"date":"YYYY-MM-DD","shiftCode":"AM"|"PM"|"NOC","role":"RN"|"LPN"|"CNA"|"NP","count":number,"notes":string|null}
+  ],
+  "details": string|null
 }
 
-C) The message is too short, a greeting, a thank-you, a question, or otherwise NOT a clear staffing request OR cancellation:
-{
-  "action": "unclear",
-  "reason": string
-}
+C) CANCEL — facility no longer needs a shift / their open shifts.
+{ "action":"cancel","scope":"all"|"specific","details":string|null }
 
-Classification rules — READ CAREFULLY. Real coordinators write conversationally; do not require exact keywords.
+D) UNCLEAR — message is too short, a greeting/thank-you, a question, or otherwise not a clear ask.
+{ "action":"unclear","reason":string }
 
-CANCELLATION — any message that signals the facility no longer needs the staffing they recently asked for. Examples include but are not limited to:
-- "cancel" / "cancel that" / "cancel everything" / "cancel my request"
+NATURAL-LANGUAGE TRIGGERS (real coordinators don't use exact keywords):
+
+MODIFY (replace a previous request) — any of these phrasings:
+- "actually X instead of Y" / "X instead of Y"
+- "actually it should be" / "actually we need" / "wait, make it"
+- "change it to" / "switch to" / "let's do"
+- "scratch that, [new request]"
+- A message where the facility contradicts a recent request AND specifies a replacement
+
+CANCEL (no replacement, just drop the request):
+- "cancel" / "cancel that" / "cancel everything"
 - "never mind" / "nm" / "nevermind"
-- "we got it covered" / "got it covered" / "covered" / "we're covered"
-- "all set" / "we're good" / "we're set" / "we're fine"
-- "found someone" / "filled internally" / "we found coverage"
-- "no longer needed" / "no need" / "disregard"
-- A message that starts with "actually..." or "wait..." and then expresses any of the above
-Scope: "all" unless the message clearly references ONE specific shift ("cancel the AM tomorrow", "drop the Friday CNA"), in which case scope: "specific" and put the specifics in details. Default to "all" when the scope is unclear.
+- "we got it covered" / "covered" / "all set" / "we're good" / "we're set"
+- "found someone" / "filled internally" / "no longer needed" / "disregard"
+- "actually..." followed by any of the above (NOT followed by a replacement request)
 
-UNCLEAR — single letters, "a", "ok", "thanks", "hi", "yes", "no" (alone), greetings, generic questions, or anything that is NOT a staffing request and NOT a cancellation.
+UNCLEAR:
+- single letters, "a", "ok", "thanks", "hi", "yes", "no" (alone), greetings, generic questions
+- anything that is NOT a request, modification, or cancellation
 
-REQUEST — any message asking to fill a shift. Time-of-day: "tonight"/"overnight"/"graveyard" -> NOC; "morning"/"day"/"AM" -> AM; "afternoon"/"evening"/"PM" -> PM. Default role to "CNA" if missing. Default count to 1 if missing.
+REQUEST — anything asking to fill a shift (no contradiction of prior message).
 
-DATE rules:
+PARSING RULES:
+- Time-of-day: "tonight"/"overnight"/"graveyard" -> NOC; "morning"/"day"/"AM" -> AM; "afternoon"/"evening"/"PM" -> PM.
+- Role default: "CNA" if missing/ambiguous.
+- Count default: 1 per shift entry. If a request asks for multiple of the same type ("2 CNAs AM"), you may use count=2 OR repeat the entry — both are accepted.
+- For multiple distinct shifts in one message ("1 AM and 1 PM RN"), put each as a SEPARATE entry in the shifts array.
+
+DATE RULES:
 - The user message starts with "Today is <Weekday>, <Month> <Day>, <Year>". Use that as the anchor.
-- "today"/"tonight" -> today's date.
-- "tomorrow" -> today + 1 day.
+- "today" / "tonight" -> today's date.
+- "tomorrow" -> today + 1.
 - A bare day-of-week ("Wednesday", "Fri") -> the NEXT future occurrence. If today IS that weekday, use today.
 - "next Wednesday" -> the Wednesday in the FOLLOWING calendar week (skip the immediate one).
-- Never return a past date. If you can't determine a date, use today.
+- For modifications without a date, use today's date.
+- Never return a past date.
 
-WORKED EXAMPLES (input -> JSON):
+WORKED EXAMPLES (input -> output JSON):
 
 "need 1 cna noc tonight"
--> {"action":"request","date":"<today>","shiftCode":"NOC","role":"CNA","count":1,"notes":null}
+-> {"action":"request","shifts":[{"date":"<today>","shiftCode":"NOC","role":"CNA","count":1,"notes":null}]}
+
+"2 RNs PM friday"
+-> {"action":"request","shifts":[{"date":"<friday>","shiftCode":"PM","role":"RN","count":2,"notes":null}]}
+
+"1 cna AM and 1 cna PM tomorrow"
+-> {"action":"request","shifts":[{"date":"<tomorrow>","shiftCode":"AM","role":"CNA","count":1,"notes":null},{"date":"<tomorrow>","shiftCode":"PM","role":"CNA","count":1,"notes":null}]}
+
+"actually it should be 1 AM 1 PM rns instead of 2 AM"
+-> {"action":"modify","shifts":[{"date":"<inferred or today>","shiftCode":"AM","role":"RN","count":1,"notes":null},{"date":"<inferred or today>","shiftCode":"PM","role":"RN","count":1,"notes":null}],"details":"split 2 AM RNs into 1 AM + 1 PM"}
+
+"wait make it 2 cnas instead of 1"
+-> {"action":"modify","shifts":[{"date":"<today>","shiftCode":"AM","role":"CNA","count":2,"notes":null}],"details":"increase count from 1 to 2"}
 
 "actually pls cancel that, i got it covered"
 -> {"action":"cancel","scope":"all","details":null}
@@ -81,12 +107,34 @@ WORKED EXAMPLES (input -> JSON):
 "thanks!"
 -> {"action":"unclear","reason":"acknowledgment, not a request"}
 
-"2 RNs PM friday please"
--> {"action":"request","date":"<next friday>","shiftCode":"PM","role":"RN","count":2,"notes":null}
+TIE-BREAKING:
+- Ambiguous between request and modify -> prefer modify if the message contains "actually", "wait", "instead", "scratch", "change", "switch", "let's do".
+- Ambiguous between modify and cancel -> if the message provides a replacement spec, MODIFY; if no replacement, CANCEL.
+- Ambiguous between cancel and unclear -> prefer CANCEL (false-positive cancel is recoverable; phantom shifts are not).
 
-When intent is ambiguous between request and unclear, prefer "unclear". When intent is ambiguous between cancel and unclear, prefer "cancel" (false-positive cancellations are recoverable; phantom shifts are not).
+Output VALID JSON only.`;
 
-Output VALID JSON only. No prose, no code fences.`;
+const sanitizeSpec = (
+  raw: Record<string, unknown>,
+  todayIso: string,
+): ParsedShiftRequest => {
+  const shiftCode = VALID_CODES.includes(raw.shiftCode as ShiftCode)
+    ? (raw.shiftCode as ShiftCode)
+    : "AM";
+  const role = VALID_ROLES.includes(raw.role as NurseRole)
+    ? (raw.role as NurseRole)
+    : "CNA";
+  const count = typeof raw.count === "number" && raw.count >= 1 ? raw.count : 1;
+  const date =
+    typeof raw.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.date)
+      ? raw.date
+      : todayIso;
+  const notes =
+    typeof raw.notes === "string" && raw.notes.length > 0
+      ? raw.notes
+      : undefined;
+  return { date, shiftCode, role, count, notes };
+};
 
 export const parseFacilitySms = async (
   text: string,
@@ -94,7 +142,6 @@ export const parseFacilitySms = async (
   todayIso: string,
 ): Promise<ParsedFacilityIntent> => {
   const trimmed = text.trim();
-  // Cheap pre-filter: ignore obvious non-messages without burning tokens.
   if (trimmed.length < 5 || trimmed.split(/\s+/).length < 2) {
     return { action: "unclear", reason: "too short" };
   }
@@ -113,7 +160,7 @@ export const parseFacilitySms = async (
   const client = new Anthropic({ apiKey });
   const message = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
-    max_tokens: 256,
+    max_tokens: 512,
     system: SYSTEM_PROMPT,
     messages: [
       {
@@ -127,40 +174,43 @@ export const parseFacilitySms = async (
   const raw = block && block.type === "text" ? block.text.trim() : "";
   const cleaned = raw.replace(/^```json\s*/i, "").replace(/```$/, "").trim();
 
-  let parsed: { action?: string; [k: string]: unknown };
+  let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(cleaned);
   } catch {
     return { action: "unclear", reason: "AI returned non-JSON" };
   }
 
-  if (parsed.action === "request") {
-    const shiftCode = VALID_CODES.includes(parsed.shiftCode as ShiftCode)
-      ? (parsed.shiftCode as ShiftCode)
-      : "AM";
-    const role = VALID_ROLES.includes(parsed.role as NurseRole)
-      ? (parsed.role as NurseRole)
-      : "CNA";
-    const count =
-      typeof parsed.count === "number" && parsed.count >= 1 ? parsed.count : 1;
-    const date =
-      typeof parsed.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(parsed.date)
-        ? parsed.date
-        : todayIso;
-    const notes =
-      typeof parsed.notes === "string" && parsed.notes.length > 0
-        ? parsed.notes
-        : undefined;
-    return { action: "request", date, shiftCode, role, count, notes };
+  if (parsed.action === "request" || parsed.action === "modify") {
+    const arr = Array.isArray(parsed.shifts) ? parsed.shifts : [];
+    if (arr.length === 0) {
+      return { action: "unclear", reason: "no shifts in parsed result" };
+    }
+    const shifts = arr.map((s) =>
+      sanitizeSpec(s as Record<string, unknown>, todayIso),
+    );
+    if (parsed.action === "modify") {
+      return {
+        action: "modify",
+        shifts,
+        details:
+          typeof parsed.details === "string" && parsed.details.length > 0
+            ? parsed.details
+            : undefined,
+      };
+    }
+    return { action: "request", shifts };
   }
 
   if (parsed.action === "cancel") {
-    const scope = parsed.scope === "specific" ? "specific" : "all";
-    const details =
-      typeof parsed.details === "string" && parsed.details.length > 0
-        ? parsed.details
-        : undefined;
-    return { action: "cancel", scope, details };
+    return {
+      action: "cancel",
+      scope: parsed.scope === "specific" ? "specific" : "all",
+      details:
+        typeof parsed.details === "string" && parsed.details.length > 0
+          ? parsed.details
+          : undefined,
+    };
   }
 
   return {

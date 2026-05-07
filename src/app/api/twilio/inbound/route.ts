@@ -10,7 +10,7 @@ import {
   sendClaimConfirmations,
 } from "@/lib/dispatch";
 import { clockIn, clockOut } from "@/lib/timekeeping";
-import type { Facility, Nurse } from "@/types";
+import type { Facility, Nurse, ParsedShiftRequest } from "@/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -103,29 +103,64 @@ async function handleFacilityRequest(
     }
   }
 
-  // intent.action === "request"
+  // request or modify — both create new shifts; modify also cancels prior open ones
   try {
-    const { id } = await createShiftFromRequest(facility, intent, body);
-    await broadcastShift(id);
-    const template =
-      facility.shiftTemplates.find((t) => t.code === intent.shiftCode) ??
-      facility.shiftTemplates[0];
-    const [y, m, d] = intent.date.split("-").map(Number);
-    const friendlyDate = new Date(y!, m! - 1, d!).toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    });
-    const roleStr =
-      intent.count > 1 ? `${intent.count} ${intent.role}s` : `a ${intent.role}`;
-    const shiftStr = template?.label ?? intent.shiftCode;
+    let priorCancelled = 0;
+    if (intent.action === "modify") {
+      const result = await cancelOpenFacilityShifts(facility.id!);
+      priorCancelled = result.count;
+    }
+
+    let createdCount = 0;
+    for (const spec of intent.shifts) {
+      const slots = Math.max(1, spec.count);
+      for (let i = 0; i < slots; i++) {
+        const single: ParsedShiftRequest = { ...spec, count: 1 };
+        const { id } = await createShiftFromRequest(facility, single, body);
+        await broadcastShift(id);
+        createdCount++;
+      }
+    }
+
+    const summary = summarizeShifts(intent.shifts, facility);
+    if (intent.action === "modify") {
+      const prior =
+        priorCancelled > 0
+          ? `Cancelled ${priorCancelled} prior open request${priorCancelled === 1 ? "" : "s"}. `
+          : "";
+      return xml(
+        `${prior}Updated — now looking for ${summary}. We'll text you as soon as ${createdCount === 1 ? "it's" : "they're"} claimed.`,
+      );
+    }
     return xml(
-      `Got it — looking for ${roleStr} for ${shiftStr} on ${friendlyDate}. We'll text you as soon as it's claimed.`,
+      `Got it — looking for ${summary}. We'll text you as soon as ${createdCount === 1 ? "it's" : "they're"} claimed.`,
     );
   } catch (err) {
     console.error("dispatch error", err);
     return xml("Something went wrong creating that shift. We'll follow up shortly.");
   }
+}
+
+function summarizeShifts(shifts: ParsedShiftRequest[], facility: Facility): string {
+  const items = shifts.map((s) => describeShift(s, facility));
+  if (items.length === 0) return "no shifts";
+  if (items.length === 1) return items[0]!;
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
+function describeShift(s: ParsedShiftRequest, facility: Facility): string {
+  const template = facility.shiftTemplates.find((t) => t.code === s.shiftCode);
+  const shiftStr = template?.label ?? s.shiftCode;
+  const [y, m, d] = s.date.split("-").map(Number);
+  const friendlyDate = new Date(y!, m! - 1, d!).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  const article = ["RN", "LPN", "NP"].includes(s.role) ? "an" : "a";
+  const subject = s.count > 1 ? `${s.count} ${s.role}s` : `${article} ${s.role}`;
+  return `${subject} for ${shiftStr} on ${friendlyDate}`;
 }
 
 async function handleNurseSms(nurse: Nurse, from: string, body: string) {

@@ -182,6 +182,7 @@ export interface ParsedShiftRequest {
 }
 
 export type ParsedFacilityIntent =
-  | ({ action: "request" } & ParsedShiftRequest)
+  | { action: "request"; shifts: ParsedShiftRequest[] }
+  | { action: "modify"; shifts: ParsedShiftRequest[]; details?: string }
   | { action: "cancel"; scope: "all" | "specific"; details?: string }
   | { action: "unclear"; reason: string };

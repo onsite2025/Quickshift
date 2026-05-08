@@ -7,10 +7,17 @@ export const runtime = "nodejs";
 const requireUser = async (req: NextRequest) => {
   const auth = req.headers.get("authorization");
   const token = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
-  if (!token) return null;
+  if (!token) {
+    console.warn("[assign] no Bearer token on request");
+    return null;
+  }
   try {
     return await adminAuth.verifyIdToken(token);
-  } catch {
+  } catch (err) {
+    console.error(
+      "[assign] verifyIdToken failed:",
+      err instanceof Error ? err.message : err,
+    );
     return null;
   }
 };

@@ -68,12 +68,22 @@ export default function ShiftsPage() {
   };
 
   const assign = async (shiftId: string, nurseId: string) => {
-    const token = await auth.currentUser?.getIdToken();
+    if (!auth.currentUser) {
+      toast.error("You're signed out — refresh the page and sign in again.");
+      return;
+    }
+    let token: string;
+    try {
+      token = await auth.currentUser.getIdToken(true);
+    } catch (err) {
+      toast.error(`Auth token error: ${err instanceof Error ? err.message : "unknown"}`);
+      return;
+    }
     const res = await fetch(`/api/shifts/${shiftId}/assign`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ nurseId }),
     });
@@ -82,7 +92,7 @@ export default function ShiftsPage() {
       setTick((t) => t + 1);
     } else {
       const data = await res.json().catch(() => ({}));
-      toast.error(data.error ?? "Couldn't assign");
+      toast.error(data.error ?? `Assign failed (HTTP ${res.status})`);
     }
   };
 

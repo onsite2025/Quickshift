@@ -57,13 +57,13 @@ export function ShiftActionsModal({
 
   const assign = async (nurseId: string) => {
     if (!auth.currentUser) {
-      toast.error("Refresh and sign in again.");
+      toast.error("You're signed out — refresh the page and sign in again.");
       return;
     }
     setBusy("assign");
     setPendingNurseId(nurseId);
     try {
-      const token = await auth.currentUser.getIdToken();
+      const token = await auth.currentUser.getIdToken(true);
       const res = await fetch(`/api/shifts/${shift.id}/assign`, {
         method: "POST",
         headers: {
@@ -93,12 +93,20 @@ export function ShiftActionsModal({
       return;
     }
     if (!auth.currentUser) {
-      toast.error("Refresh and sign in again.");
+      toast.error("You're signed out — refresh the page and sign in again.");
       return;
     }
     setBusy("duplicate");
     try {
-      const token = await auth.currentUser.getIdToken();
+      let token: string;
+      try {
+        token = await auth.currentUser.getIdToken(true);
+      } catch (err) {
+        toast.error(
+          `Auth token error: ${err instanceof Error ? err.message : "unknown"}`,
+        );
+        return;
+      }
       const res = await fetch(`/api/shifts/${shift.id}/duplicate`, {
         method: "POST",
         headers: {
@@ -109,7 +117,7 @@ export function ShiftActionsModal({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error(data.error ?? "Duplicate failed");
+        toast.error(data.error ?? `Duplicate failed (HTTP ${res.status})`);
         return;
       }
       const n = data.created?.length ?? 0;
@@ -127,7 +135,7 @@ export function ShiftActionsModal({
 
   const cancel = async () => {
     if (!auth.currentUser) {
-      toast.error("Refresh and sign in again.");
+      toast.error("You're signed out — refresh the page and sign in again.");
       return;
     }
     if (
@@ -140,7 +148,7 @@ export function ShiftActionsModal({
       return;
     setBusy("cancel");
     try {
-      const token = await auth.currentUser.getIdToken();
+      const token = await auth.currentUser.getIdToken(true);
       const res = await fetch(`/api/shifts/${shift.id}/cancel`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },

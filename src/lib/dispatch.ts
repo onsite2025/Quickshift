@@ -21,16 +21,23 @@ const fmtDate = (iso: string) => {
 };
 
 const buildShiftTimestamps = (date: string, template: ShiftTemplate) => {
-  const [sH, sM] = template.startTime.split(":").map(Number);
-  const [eH, eM] = template.endTime.split(":").map(Number);
-  const [y, m, d] = date.split("-").map(Number);
-  const start = new Date(y, m - 1, d, sH, sM);
-  const end = new Date(y, m - 1, d, eH, eM);
-  if (end.getTime() <= start.getTime()) end.setDate(end.getDate() + 1);
+  // Wall-clock time stored as UTC; same convention everywhere so that whatever
+  // hours the facility set in the template are exactly what users see, no
+  // matter what timezone server or browser is in.
+  const start = new Date(`${date}T${padTime(template.startTime)}:00.000Z`);
+  let end = new Date(`${date}T${padTime(template.endTime)}:00.000Z`);
+  if (end.getTime() <= start.getTime()) {
+    end = new Date(end.getTime() + 24 * 60 * 60 * 1000);
+  }
   return {
     start: Timestamp.fromDate(start),
     end: Timestamp.fromDate(end),
   };
+};
+
+const padTime = (t: string) => {
+  const [h, m] = t.split(":");
+  return `${(h ?? "00").padStart(2, "0")}:${(m ?? "00").padStart(2, "0")}`;
 };
 
 export const createShiftFromRequest = async (
@@ -115,7 +122,11 @@ export const broadcastShift = async (shiftId: string): Promise<{ sent: number }>
 
 const formatRange = (start: Date, end: Date) => {
   const fmt = (d: Date) =>
-    d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    d.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: "UTC",
+    });
   return `${fmt(start)}–${fmt(end)}`;
 };
 

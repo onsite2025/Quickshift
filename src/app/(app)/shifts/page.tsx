@@ -13,6 +13,7 @@ import { ShiftGrid } from "@/components/ShiftGrid";
 import { ShiftForm } from "@/components/forms/ShiftForm";
 import { auth } from "@/lib/firebase";
 import { nursesCol, shiftsCol } from "@/lib/collections";
+import { formatShiftDateLabel, formatShiftHour } from "@/lib/utils";
 import type { Nurse, Shift, ShiftStatus } from "@/types";
 
 const STATUS_COLOR: Record<ShiftStatus, string> = {
@@ -114,10 +115,10 @@ export default function ShiftsPage() {
                 render: (s) => (
                   <div className="text-xs">
                     <div className="font-medium text-ink-900">
-                      {format(s.start.toDate(), "EEE MMM d")}
+                      {formatShiftDateLabel(s.start.toDate())}
                     </div>
                     <div className="text-ink-500">
-                      {format(s.start.toDate(), "h:mma")}–{format(s.end.toDate(), "h:mma")}
+                      {formatShiftHour(s.start.toDate())}–{formatShiftHour(s.end.toDate())}
                     </div>
                   </div>
                 ),

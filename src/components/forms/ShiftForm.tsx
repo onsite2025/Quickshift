@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import { Loader2 } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { facilitiesCol, shiftsCol } from "@/lib/collections";
+import { buildShiftDate } from "@/lib/utils";
 import type { Facility, NurseRole, ShiftCode } from "@/types";
 
 const ROLES: NurseRole[] = ["RN", "LPN", "CNA", "NP"];
@@ -39,12 +40,9 @@ export function ShiftForm({ onClose, onCreated }: { onClose: () => void; onCreat
     }
     setBusy(true);
     try {
-      const [y, m, d] = form.date.split("-").map(Number);
-      const [sH, sM] = template.startTime.split(":").map(Number);
-      const [eH, eM] = template.endTime.split(":").map(Number);
-      const start = new Date(y!, m! - 1, d!, sH!, sM!);
-      const end = new Date(y!, m! - 1, d!, eH!, eM!);
-      if (end <= start) end.setDate(end.getDate() + 1);
+      const start = buildShiftDate(form.date, template.startTime);
+      let end = buildShiftDate(form.date, template.endTime);
+      if (end <= start) end = new Date(end.getTime() + 24 * 60 * 60 * 1000);
 
       const ref = await addDoc(shiftsCol, {
         facilityId: facility.id!,

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { addDays, format, startOfWeek, isSameDay } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { Nurse, Shift, ShiftStatus } from "@/types";
-import { initials } from "@/lib/utils";
+import { initials, formatShiftHour } from "@/lib/utils";
 
 const STATUS_COLOR: Record<ShiftStatus, string> = {
   draft: "bg-ink-100 text-ink-700 ring-ink-200",
@@ -38,8 +38,9 @@ export function ShiftGrid({
     for (const s of shifts) {
       // Cancelled shifts shouldn't show on the coverage grid at all.
       if (s.status === "cancelled") continue;
-      const startDate = s.start.toDate();
-      const dayKey = format(startDate, "yyyy-MM-dd");
+      // Use the shift's stored `date` field (already facility-local YYYY-MM-DD)
+      // so day-bucketing isn't affected by the viewer's timezone.
+      const dayKey = s.date;
       const nurseKey = s.nurseId ?? "__open__";
       const key = `${nurseKey}|${dayKey}`;
       const arr = map.get(key) ?? [];
@@ -196,7 +197,7 @@ export function ShiftGrid({
 
 function ShiftPill({ shift }: { shift: Shift }) {
   const cls = STATUS_COLOR[shift.status];
-  const hours = `${formatHour(shift.start.toDate())}–${formatHour(shift.end.toDate())}`;
+  const hours = `${formatShiftHour(shift.start.toDate())}–${formatShiftHour(shift.end.toDate())}`;
   return (
     <div
       className={`flex flex-col rounded-md px-2 py-1.5 text-[11px] ring-1 ring-inset ${cls}`}
@@ -209,12 +210,4 @@ function ShiftPill({ shift }: { shift: Shift }) {
       <span className="truncate leading-tight opacity-70">{shift.facilityName}</span>
     </div>
   );
-}
-
-function formatHour(d: Date): string {
-  const h = d.getHours();
-  const m = d.getMinutes();
-  const ampm = h >= 12 ? "p" : "a";
-  const h12 = h % 12 || 12;
-  return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2, "0")}${ampm}`;
 }

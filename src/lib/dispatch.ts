@@ -76,20 +76,44 @@ export const createShiftFromRequest = async (
   return { id: ref.id, shift: { id: ref.id, ...shift } };
 };
 
-export const broadcastShift = async (shiftId: string): Promise<{ sent: number }> => {
+export interface BroadcastOptions {
+  // When provided, only these nurse IDs are eligible. Each is still filtered
+  // for active status, matching role, and a phone on file. When omitted, the
+  // broadcast goes to every active nurse with the matching role.
+  nurseIds?: string[];
+}
+
+export const broadcastShift = async (
+  shiftId: string,
+  options: BroadcastOptions = {},
+): Promise<{ sent: number }> => {
   const shiftSnap = await adminDb.collection("shifts").doc(shiftId).get();
   if (!shiftSnap.exists) throw new Error("Shift not found");
   const shift = shiftSnap.data() as Shift;
 
-  const eligibleSnap = await adminDb
-    .collection("nurses")
-    .where("status", "==", "active")
-    .where("role", "==", shift.role)
-    .get();
+  let nurses: Array<Nurse & { id: string }>;
 
-  const nurses = eligibleSnap.docs
-    .map((d) => ({ id: d.id, ...(d.data() as Nurse) }))
-    .filter((n) => n.phone);
+  if (options.nurseIds && options.nurseIds.length > 0) {
+    // Operator-selected subset. Fetch each by ID and apply the same
+    // eligibility filters as the default path so a selected-but-blocked or
+    // wrong-role nurse silently drops out.
+    const docs = await Promise.all(
+      options.nurseIds.map((id) => adminDb.collection("nurses").doc(id).get()),
+    );
+    nurses = docs
+      .filter((d) => d.exists)
+      .map((d) => ({ id: d.id, ...(d.data() as Nurse) }))
+      .filter((n) => n.role === shift.role && n.status === "active" && Boolean(n.phone));
+  } else {
+    const eligibleSnap = await adminDb
+      .collection("nurses")
+      .where("status", "==", "active")
+      .where("role", "==", shift.role)
+      .get();
+    nurses = eligibleSnap.docs
+      .map((d) => ({ id: d.id, ...(d.data() as Nurse) }))
+      .filter((n) => Boolean(n.phone));
+  }
 
   const recipients: BroadcastRecipient[] = [];
   const start = shift.start.toDate();

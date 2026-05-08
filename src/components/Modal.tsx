@@ -36,14 +36,14 @@ export function Modal({
   const widths = { sm: "max-w-sm", md: "max-w-lg", lg: "max-w-2xl" };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
       <div
         className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden
       />
       <div
-        className={`relative flex max-h-[90vh] w-full flex-col rounded-2xl bg-white shadow-card ${widths[size]}`}
+        className={`relative flex max-h-[92vh] w-full flex-col rounded-t-2xl bg-white shadow-card sm:rounded-2xl ${widths[size]}`}
       >
         <div className="flex shrink-0 items-start justify-between border-b border-ink-200/70 px-6 py-4">
           <div>

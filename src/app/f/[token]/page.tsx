@@ -12,7 +12,7 @@ import {
   X,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { formatShiftDateLabel, formatShiftHour } from "@/lib/utils";
+import { formatShiftDateLabel, formatShiftHour, todayLocal } from "@/lib/utils";
 import type { NurseRole, ShiftCode, ShiftStatus, ShiftTemplate } from "@/types";
 
 interface PortalShift {
@@ -235,7 +235,7 @@ function RequestShiftModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const today = useMemo(() => todayLocal(), []);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
     role: "CNA" as NurseRole,

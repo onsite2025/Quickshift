@@ -16,6 +16,7 @@ import {
   recentFacilityConversation,
   openFacilityShifts,
 } from "@/lib/sms-log";
+import { facilityTimezone, todayInTimezone } from "@/lib/utils";
 import type { Facility, Nurse, ParsedShiftRequest } from "@/types";
 
 export const runtime = "nodejs";
@@ -113,7 +114,9 @@ async function handleFacilityRequest(
 
   let intent;
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    // "Today" must be computed in the facility's local timezone, not UTC,
+    // or messages sent after 5pm PT roll into tomorrow's date.
+    const today = todayInTimezone(facilityTimezone(facility));
     intent = await parseFacilitySms(body, facility, today, {
       recentMessages,
       openShifts,

@@ -13,7 +13,7 @@ import toast from "react-hot-toast";
 import { Loader2 } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { facilitiesCol, nursesCol, shiftsCol } from "@/lib/collections";
-import { buildShiftDate, initials } from "@/lib/utils";
+import { buildShiftDate, initials, todayLocal } from "@/lib/utils";
 import type { Facility, Nurse, NurseRole, ShiftCode } from "@/types";
 
 const ROLES: NurseRole[] = ["RN", "LPN", "CNA", "NP"];
@@ -37,7 +37,7 @@ export function ShiftForm({
     facilityId: "",
     role: "CNA" as NurseRole,
     shiftCode: "AM" as ShiftCode,
-    date: new Date().toISOString().slice(0, 10),
+    date: todayLocal(),
     notes: "",
   });
 

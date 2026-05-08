@@ -119,6 +119,10 @@ async function handleFacilityRequest(
     );
   }
 
+  if (intent.action === "needs_clarification") {
+    return reply(intent.question);
+  }
+
   if (intent.action === "unclear") {
     return reply(
       "Couldn't read that as a shift request. Try: '1 CNA NOC tonight'. To cancel open requests, text 'cancel all'. Reply STOP to opt out.",

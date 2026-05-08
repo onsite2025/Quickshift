@@ -19,9 +19,9 @@ const VALID_ROLES: NurseRole[] = ["RN", "LPN", "CNA", "NP"];
 
 const SYSTEM_PROMPT = `You triage SMS messages sent to a nursing-registry dispatcher. Read the inbound text and return STRICT JSON describing the sender's intent. No prose, no code fences.
 
-Return one of these four exact shapes:
+Return one of these five exact shapes:
 
-A) REQUEST — facility wants to fill one or more shifts.
+A) REQUEST — facility wants to fill one or more shifts. Every shift entry MUST have a definite role and shiftCode.
 {
   "action": "request",
   "shifts": [
@@ -41,7 +41,10 @@ B) MODIFY — facility wants to REPLACE a previous open request with one or more
 C) CANCEL — facility no longer needs a shift / their open shifts.
 { "action":"cancel","scope":"all"|"specific","details":string|null }
 
-D) UNCLEAR — message is too short, a greeting/thank-you, a question, or otherwise not a clear ask.
+D) NEEDS_CLARIFICATION — message looks like a request but is missing role OR shiftCode (and conversation context doesn't fill it in). NEVER guess these fields. Ask politely.
+{ "action":"needs_clarification","question":string }
+
+E) UNCLEAR — message is too short, a greeting/thank-you, a question, or otherwise not a clear ask AND not a clarification reply.
 { "action":"unclear","reason":string }
 
 NATURAL-LANGUAGE TRIGGERS (real coordinators don't use exact keywords):
@@ -68,9 +71,16 @@ REQUEST — anything asking to fill a shift (no contradiction of prior message).
 
 PARSING RULES:
 - Time-of-day: "tonight"/"overnight"/"graveyard" -> NOC; "morning"/"day"/"AM" -> AM; "afternoon"/"evening"/"PM" -> PM.
-- Role default: "CNA" if missing/ambiguous.
-- Count default: 1 per shift entry. If a request asks for multiple of the same type ("2 CNAs AM"), you may use count=2 OR repeat the entry — both are accepted.
+- Required fields per shift: role AND shiftCode must be EXPLICITLY present in the message OR derivable from "Currently open shifts" / "Recent conversation" context. If either is missing -> NEEDS_CLARIFICATION. NEVER guess.
+- Count default: 1 if not stated. If a request asks for multiple of the same type ("2 CNAs AM"), use count=2 OR repeat the entry — both accepted.
+- Date default: infer from words ("tonight" -> today, "tomorrow" -> today+1, weekday -> next future occurrence). If completely missing AND no clue at all, set date to today.
 - For multiple distinct shifts in one message ("1 AM and 1 PM RN"), put each as a SEPARATE entry in the shifts array.
+
+CLARIFICATION QUESTIONS — keep them short and use exact options:
+- Missing role only: "Which role do you need? RN, LPN, or CNA?"
+- Missing shift only: "Which shift — AM (7a-3p), PM (3p-11p), or NOC (11p-7a)?"
+- Both missing: "Which role and shift? e.g. '3 CNA NOC' or '2 RN AM'."
+- Always include the parts you DID parse, e.g. "Which role for the 3 NOC shifts tomorrow — RN, LPN, or CNA?"
 
 DATE RULES:
 - The user message starts with "Today is <Weekday>, <Month> <Day>, <Year>". Use that as the anchor.
@@ -91,6 +101,19 @@ WORKED EXAMPLES (input -> output JSON):
 
 "1 cna AM and 1 cna PM tomorrow"
 -> {"action":"request","shifts":[{"date":"<tomorrow>","shiftCode":"AM","role":"CNA","count":1,"notes":null},{"date":"<tomorrow>","shiftCode":"PM","role":"CNA","count":1,"notes":null}]}
+
+"I need 3 noc shifts tomorrow" (no role specified, no prior context)
+-> {"action":"needs_clarification","question":"Which role for the 3 NOC shifts tomorrow — RN, LPN, or CNA?"}
+
+"need 2 cnas tomorrow" (no shift specified, no prior context)
+-> {"action":"needs_clarification","question":"Which shift for the 2 CNAs tomorrow — AM (7a-3p), PM (3p-11p), or NOC (11p-7a)?"}
+
+"need someone tonight" (no role or shift, just "tonight" -> NOC inferred)
+-> {"action":"needs_clarification","question":"Which role do you need for tonight (NOC)? RN, LPN, or CNA?"}
+
+After prior message "system: Which role for the 3 NOC shifts tomorrow — RN, LPN, or CNA?":
+"CNA" -> {"action":"request","shifts":[{"date":"<tomorrow>","shiftCode":"NOC","role":"CNA","count":3,"notes":null}]}
+"make em RNs" -> {"action":"request","shifts":[{"date":"<tomorrow>","shiftCode":"NOC","role":"RN","count":3,"notes":null}]}
 
 "actually it should be 1 AM 1 PM rns instead of 2 AM"
 -> {"action":"modify","shifts":[{"date":"<inferred or today>","shiftCode":"AM","role":"RN","count":1,"notes":null},{"date":"<inferred or today>","shiftCode":"PM","role":"RN","count":1,"notes":null}],"details":"split 2 AM RNs into 1 AM + 1 PM"}
@@ -261,6 +284,14 @@ export const parseFacilitySms = async (
           ? parsed.details
           : undefined,
     };
+  }
+
+  if (parsed.action === "needs_clarification") {
+    const question =
+      typeof parsed.question === "string" && parsed.question.length > 0
+        ? parsed.question
+        : "Which role and shift do you need? e.g. '1 CNA NOC tonight'.";
+    return { action: "needs_clarification", question };
   }
 
   return {

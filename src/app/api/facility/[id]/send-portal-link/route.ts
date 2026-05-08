@@ -1,6 +1,8 @@
+import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { Timestamp } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
-import { sendSMS } from "@/lib/sms";
+import { normalizePhone, sendSMS } from "@/lib/sms";
 import type { Facility } from "@/types";
 
 export const runtime = "nodejs";
@@ -23,29 +25,50 @@ export async function POST(
   const user = await requireUser(req);
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const snap = await adminDb.collection("facilities").doc(params.id).get();
+  const ref = adminDb.collection("facilities").doc(params.id);
+  const snap = await ref.get();
   if (!snap.exists) {
     return NextResponse.json({ error: "facility not found" }, { status: 404 });
   }
   const facility = snap.data() as Facility;
 
-  if (!facility.portalToken) {
-    return NextResponse.json({ error: "no portal token on facility" }, { status: 400 });
+  // Optional override: send to a different phone than facility.contactPhone.
+  const body = await req.json().catch(() => ({}));
+  const overrideRaw =
+    typeof body?.to === "string" && body.to.trim().length > 0 ? body.to.trim() : null;
+  const targetPhone = overrideRaw
+    ? normalizePhone(overrideRaw)
+    : facility.contactPhone;
+  if (!targetPhone) {
+    return NextResponse.json(
+      { error: "No phone number to send to. Add a contact phone or pass 'to'." },
+      { status: 400 },
+    );
   }
-  if (!facility.contactPhone) {
-    return NextResponse.json({ error: "no contact phone on facility" }, { status: 400 });
+
+  // Generate a portal token if this facility doesn't have one yet (handles
+  // facilities created before the portal feature shipped).
+  let portalToken = facility.portalToken;
+  if (!portalToken) {
+    portalToken = randomBytes(24).toString("hex");
+    await ref.update({ portalToken, updatedAt: Timestamp.now() });
   }
 
   const proto = req.headers.get("x-forwarded-proto") ?? "https";
   const host =
     req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "";
-  const baseUrl = `${proto}://${host}`;
-  const link = `${baseUrl}/f/${facility.portalToken}`;
-  const message = `Welcome to QuickShift, ${facility.name}! Your private portal: ${link}\n\nUse it to request shifts, see who's coming, or cancel open requests. Bookmark this link.`;
+  const link = `${proto}://${host}/f/${portalToken}`;
+  const message = `${facility.name}: your QuickShift portal — ${link}\n\nUse it to request shifts, see who's coming, or cancel open requests. Bookmark this link.`;
 
   try {
-    const sid = await sendSMS(facility.contactPhone, message);
-    return NextResponse.json({ ok: true, sid });
+    const sid = await sendSMS(targetPhone, message);
+    return NextResponse.json({
+      ok: true,
+      sid,
+      sentTo: targetPhone,
+      portalToken,
+      link,
+    });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "SMS failed" },

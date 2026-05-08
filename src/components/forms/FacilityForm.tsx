@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import { addDoc, doc, serverTimestamp, Timestamp, updateDoc } from "firebase/firestore";
 import toast from "react-hot-toast";
-import { Loader2 } from "lucide-react";
+import { Copy, Link as LinkIcon, Loader2, Send } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
 import { facilitiesCol } from "@/lib/collections";
 import { generatePortalToken } from "@/lib/utils";
@@ -53,6 +53,55 @@ export function FacilityForm({
 
   const updateTemplate = (i: number, patch: Partial<ShiftTemplate>) => {
     setTemplates(templates.map((t, idx) => (idx === i ? { ...t, ...patch } : t)));
+  };
+
+  // Portal link panel state — only used when editing an existing facility.
+  const [portalToken, setPortalToken] = useState(facility?.portalToken ?? "");
+  const [linkPhone, setLinkPhone] = useState(facility?.contactPhone ?? "");
+  const [sendingLink, setSendingLink] = useState(false);
+
+  const portalLink =
+    portalToken && typeof window !== "undefined"
+      ? `${window.location.origin}/f/${portalToken}`
+      : "";
+
+  const sendPortalLink = async () => {
+    if (!facility?.id) return;
+    if (!linkPhone.trim()) {
+      toast.error("Enter a phone number to text the link to.");
+      return;
+    }
+    setSendingLink(true);
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      const res = await fetch(`/api/facility/${facility.id}/send-portal-link`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+        },
+        body: JSON.stringify({ to: linkPhone }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error ?? "SMS failed");
+        return;
+      }
+      if (data.portalToken) setPortalToken(data.portalToken);
+      toast.success(`Link sent to ${data.sentTo ?? linkPhone}`);
+    } finally {
+      setSendingLink(false);
+    }
+  };
+
+  const copyPortalLink = async () => {
+    if (!portalLink) return;
+    try {
+      await navigator.clipboard.writeText(portalLink);
+      toast.success("Link copied");
+    } catch {
+      toast.error("Copy failed — select and copy manually.");
+    }
   };
 
   const onSubmit = async (e: FormEvent) => {
@@ -153,6 +202,51 @@ export function FacilityForm({
           <input type="number" min="0" step="0.5" className="input" value={form.billingRate} onChange={(e) => setForm({ ...form, billingRate: e.target.value })} />
         </div>
       </div>
+
+      {editing && (
+        <div className="rounded-lg border border-ink-200 bg-ink-50/40 p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <LinkIcon className="h-4 w-4 text-brand-600" />
+            <h4 className="text-sm font-semibold text-ink-900">Portal link</h4>
+          </div>
+          {portalLink ? (
+            <div className="mb-3 flex items-center gap-2">
+              <input readOnly className="input flex-1 font-mono text-xs" value={portalLink} />
+              <button type="button" onClick={copyPortalLink} className="btn-secondary shrink-0">
+                <Copy className="h-4 w-4" /> Copy
+              </button>
+            </div>
+          ) : (
+            <p className="mb-3 text-xs text-ink-500">
+              No portal link generated yet. Texting one will create it.
+            </p>
+          )}
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <label className="label">Send link via SMS to</label>
+              <input
+                type="tel"
+                className="input"
+                placeholder="+15551234567"
+                value={linkPhone}
+                onChange={(e) => setLinkPhone(e.target.value)}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={sendPortalLink}
+              disabled={sendingLink}
+              className="btn-primary shrink-0"
+            >
+              {sendingLink ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              Send
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-ink-500">
+            Defaults to the contact phone. Edit to send to a different person — both phones can use the same link.
+          </p>
+        </div>
+      )}
 
       <div>
         <label className="label">Shift templates</label>

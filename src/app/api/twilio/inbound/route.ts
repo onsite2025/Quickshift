@@ -6,6 +6,7 @@ import {
   createShiftFromRequest,
   broadcastShift,
   cancelOpenFacilityShifts,
+  cancelSpecificShifts,
   claimShift,
   sendClaimConfirmations,
 } from "@/lib/dispatch";
@@ -126,13 +127,25 @@ async function handleFacilityRequest(
 
   if (intent.action === "cancel") {
     try {
+      if (intent.scope === "specific") {
+        if (!intent.shiftIds || intent.shiftIds.length === 0) {
+          return reply(
+            "Which shift would you like to cancel? Reply with role and shift, e.g. 'PM RN' or 'Friday AM'.",
+          );
+        }
+        const { count } = await cancelSpecificShifts(facility.id!, intent.shiftIds);
+        if (count === 0) {
+          return reply(
+            "Couldn't match that to an open shift. Your coordinator will follow up to confirm.",
+          );
+        }
+        return reply(
+          `Cancelled ${count} shift${count === 1 ? "" : "s"} as requested. Your other open requests are still active.`,
+        );
+      }
       const { count } = await cancelOpenFacilityShifts(facility.id!);
-      const tail =
-        intent.scope === "specific"
-          ? "For shifts already confirmed with a nurse, your coordinator will reach out."
-          : "For shifts already claimed by a nurse, your coordinator will reach out.";
       return reply(
-        `Cancelled ${count} open request${count === 1 ? "" : "s"}. ${tail}`,
+        `Cancelled ${count} open request${count === 1 ? "" : "s"}. For shifts already claimed by a nurse, your coordinator will reach out.`,
       );
     } catch (err) {
       console.error("cancel error", err);

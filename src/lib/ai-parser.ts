@@ -64,11 +64,17 @@ const TOOLS = [
   {
     name: "cancel_shifts",
     description:
-      "Cancel the facility's open shifts entirely without replacement. Use when the facility no longer needs the staffing they asked for — 'never mind', 'we got it covered', 'cancel everything', 'all set'. Use scope:'specific' if they referenced one particular shift.",
+      "Cancel open shifts for the facility.\n\n- scope='all': cancel ALL of the facility's open shifts (use for 'never mind', 'we got it covered', 'cancel everything').\n- scope='specific': cancel ONLY the shifts named in shiftIds. Use this when the facility refers to particular shifts (e.g. 'cancel the PM RN', 'drop the friday AM only', 'we filled the NOC ourselves'). Pick the matching IDs from the 'Currently open / scheduled shifts' list shown in the user message. NEVER use scope='specific' without providing shiftIds.",
     input_schema: {
       type: "object",
       properties: {
         scope: { type: "string", enum: ["all", "specific"] },
+        shiftIds: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Required when scope='specific'. The exact shift IDs to cancel, taken from the open-shifts list. Do not invent IDs. If you can't determine which specific shifts, use scope='all' or call reply_only to ask.",
+        },
         details: { type: "string" },
       },
       required: ["scope"],
@@ -176,11 +182,13 @@ export const parseFacilitySms = async (
   }
 
   if (context.openShifts && context.openShifts.length > 0) {
-    userParts.push("\nCurrently open / scheduled shifts for this facility:");
+    userParts.push(
+      "\nCurrently open / scheduled shifts for this facility (use these IDs verbatim if you need to cancel specific shifts):",
+    );
     for (const s of context.openShifts) {
       const claimed = s.nurseName ? ` (claimed by ${s.nurseName})` : "";
       userParts.push(
-        `- ${s.date} ${s.shiftCode} ${s.role} [${s.status}]${claimed}`,
+        `- id=${s.id} | ${s.date} ${s.shiftCode} ${s.role} [${s.status}]${claimed}`,
       );
     }
   } else if (context.openShifts) {
@@ -240,9 +248,16 @@ export const parseFacilitySms = async (
   }
 
   if (toolUse.name === "cancel_shifts") {
+    const scope = input.scope === "specific" ? "specific" : "all";
+    const ids = Array.isArray(input.shiftIds)
+      ? input.shiftIds.filter(
+          (id): id is string => typeof id === "string" && id.length > 0,
+        )
+      : [];
     return {
       action: "cancel",
-      scope: input.scope === "specific" ? "specific" : "all",
+      scope,
+      shiftIds: ids.length > 0 ? ids : undefined,
       details:
         typeof input.details === "string" && input.details.length > 0
           ? input.details

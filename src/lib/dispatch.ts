@@ -193,6 +193,34 @@ export const claimShift = async (
   });
 };
 
+export const cancelSpecificShifts = async (
+  facilityId: string,
+  shiftIds: string[],
+): Promise<{ count: number; cancelled: Shift[] }> => {
+  if (shiftIds.length === 0) return { count: 0, cancelled: [] };
+
+  const cancelled: Shift[] = [];
+  const batch = adminDb.batch();
+  const now = Timestamp.now();
+
+  for (const id of shiftIds) {
+    const ref = adminDb.collection("shifts").doc(id);
+    const snap = await ref.get();
+    if (!snap.exists) continue;
+    const data = snap.data() as Shift;
+    // Only let the cancel touch shifts that belong to this facility AND are
+    // still pre-claim. Confirmed/in-progress/completed/cancelled stay put.
+    if (data.facilityId !== facilityId) continue;
+    if (!["draft", "open", "broadcasting"].includes(data.status)) continue;
+    batch.update(ref, { status: "cancelled", updatedAt: now });
+    cancelled.push({ ...data, id });
+  }
+
+  if (cancelled.length === 0) return { count: 0, cancelled: [] };
+  await batch.commit();
+  return { count: cancelled.length, cancelled };
+};
+
 export const cancelOpenFacilityShifts = async (
   facilityId: string,
 ): Promise<{ count: number }> => {

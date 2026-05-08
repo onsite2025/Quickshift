@@ -67,6 +67,25 @@ export default function ShiftsPage() {
     }
   };
 
+  const assign = async (shiftId: string, nurseId: string) => {
+    const token = await auth.currentUser?.getIdToken();
+    const res = await fetch(`/api/shifts/${shiftId}/assign`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ nurseId }),
+    });
+    if (res.ok) {
+      toast.success("Shift assigned");
+      setTick((t) => t + 1);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      toast.error(data.error ?? "Couldn't assign");
+    }
+  };
+
   return (
     <>
       <Header title="Shifts" description="Schedule, broadcast, and track every shift." />
@@ -104,7 +123,7 @@ export default function ShiftsPage() {
         />
 
         {view === "grid" ? (
-          <ShiftGrid nurses={nurses} shifts={shifts} />
+          <ShiftGrid nurses={nurses} shifts={shifts} onAssign={assign} />
         ) : (
           <DataTable
             rows={visibleShifts}

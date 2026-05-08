@@ -21,12 +21,16 @@ export function ShiftGrid({
   nurses,
   shifts,
   days = 7,
+  onAssign,
 }: {
   nurses: Nurse[];
   shifts: Shift[];
   days?: number;
+  onAssign?: (shiftId: string, nurseId: string) => void | Promise<void>;
 }) {
   const [anchor, setAnchor] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [dragShiftId, setDragShiftId] = useState<string | null>(null);
+  const [dragOverNurseId, setDragOverNurseId] = useState<string | null>(null);
 
   const dayList = useMemo(
     () => Array.from({ length: days }, (_, i) => addDays(anchor, i)),
@@ -138,7 +142,21 @@ export function ShiftGrid({
                     >
                       <div className="space-y-1">
                         {cellShifts.map((s) => (
-                          <ShiftPill key={s.id} shift={s} />
+                          <ShiftPill
+                            key={s.id}
+                            shift={s}
+                            draggable={Boolean(onAssign)}
+                            onDragStart={(e) => {
+                              if (!s.id) return;
+                              e.dataTransfer.effectAllowed = "move";
+                              e.dataTransfer.setData("text/plain", s.id);
+                              setDragShiftId(s.id);
+                            }}
+                            onDragEnd={() => {
+                              setDragShiftId(null);
+                              setDragOverNurseId(null);
+                            }}
+                          />
                         ))}
                       </div>
                     </td>
@@ -147,39 +165,74 @@ export function ShiftGrid({
               </tr>
             )}
 
-            {nurses.map((nurse) => (
-              <tr key={nurse.id} className="hover:bg-ink-50/40">
-                <td className="sticky left-0 z-10 w-56 border-b border-ink-100 bg-white px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-700">
-                      {initials(`${nurse.firstName} ${nurse.lastName}`)}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="truncate font-medium text-ink-900">
-                        {nurse.firstName} {nurse.lastName}
+            {nurses.map((nurse) => {
+              const isDropTarget =
+                onAssign && dragShiftId && dragOverNurseId === nurse.id;
+              const dragShift = dragShiftId
+                ? shifts.find((s) => s.id === dragShiftId)
+                : null;
+              const compatible =
+                !dragShift || dragShift.role === nurse.role;
+              const rowHighlight = isDropTarget
+                ? compatible
+                  ? "bg-emerald-50/60"
+                  : "bg-rose-50/40"
+                : "hover:bg-ink-50/40";
+
+              const onCellDragOver = (e: React.DragEvent) => {
+                if (!onAssign || !dragShiftId) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = compatible ? "move" : "none";
+                if (dragOverNurseId !== nurse.id) {
+                  setDragOverNurseId(nurse.id ?? null);
+                }
+              };
+              const onCellDrop = async (e: React.DragEvent) => {
+                if (!onAssign) return;
+                e.preventDefault();
+                const shiftId = e.dataTransfer.getData("text/plain");
+                setDragShiftId(null);
+                setDragOverNurseId(null);
+                if (!shiftId || !nurse.id) return;
+                await onAssign(shiftId, nurse.id);
+              };
+
+              return (
+                <tr key={nurse.id} className={`transition-colors ${rowHighlight}`}>
+                  <td className="sticky left-0 z-10 w-56 border-b border-ink-100 bg-white px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-700">
+                        {initials(`${nurse.firstName} ${nurse.lastName}`)}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="truncate font-medium text-ink-900">
+                          {nurse.firstName} {nurse.lastName}
+                        </div>
+                        <div className="text-xs text-ink-500">{nurse.role}</div>
                       </div>
-                      <div className="text-xs text-ink-500">{nurse.role}</div>
                     </div>
-                  </div>
-                </td>
-                {dayList.map((d) => {
-                  const dayKey = format(d, "yyyy-MM-dd");
-                  const cellShifts = shiftLookup.get(`${nurse.id}|${dayKey}`) ?? [];
-                  return (
-                    <td
-                      key={dayKey}
-                      className="min-w-[140px] border-b border-ink-100 px-2 py-2 align-top"
-                    >
-                      <div className="space-y-1">
-                        {cellShifts.map((s) => (
-                          <ShiftPill key={s.id} shift={s} />
-                        ))}
-                      </div>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+                  </td>
+                  {dayList.map((d) => {
+                    const dayKey = format(d, "yyyy-MM-dd");
+                    const cellShifts = shiftLookup.get(`${nurse.id}|${dayKey}`) ?? [];
+                    return (
+                      <td
+                        key={dayKey}
+                        onDragOver={onCellDragOver}
+                        onDrop={onCellDrop}
+                        className="min-w-[140px] border-b border-ink-100 px-2 py-2 align-top"
+                      >
+                        <div className="space-y-1">
+                          {cellShifts.map((s) => (
+                            <ShiftPill key={s.id} shift={s} />
+                          ))}
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
 
             {nurses.length === 0 && (
               <tr>
@@ -195,13 +248,32 @@ export function ShiftGrid({
   );
 }
 
-function ShiftPill({ shift }: { shift: Shift }) {
+function ShiftPill({
+  shift,
+  draggable = false,
+  onDragStart,
+  onDragEnd,
+}: {
+  shift: Shift;
+  draggable?: boolean;
+  onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDragEnd?: (e: React.DragEvent<HTMLDivElement>) => void;
+}) {
   const cls = STATUS_COLOR[shift.status];
   const hours = `${formatShiftHour(shift.start.toDate())}–${formatShiftHour(shift.end.toDate())}`;
   return (
     <div
-      className={`flex flex-col rounded-md px-2 py-1.5 text-[11px] ring-1 ring-inset ${cls}`}
-      title={`${shift.facilityName} • ${shift.role} • ${shift.shiftLabel} • ${shift.status}`}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      className={`flex flex-col rounded-md px-2 py-1.5 text-[11px] ring-1 ring-inset ${cls} ${
+        draggable ? "cursor-grab active:cursor-grabbing" : ""
+      }`}
+      title={
+        draggable
+          ? `Drag to a clinician's row to assign · ${shift.facilityName} • ${shift.role} • ${shift.shiftLabel}`
+          : `${shift.facilityName} • ${shift.role} • ${shift.shiftLabel} • ${shift.status}`
+      }
     >
       <span className="font-semibold leading-tight">
         {shift.role} · {shift.shiftCode}

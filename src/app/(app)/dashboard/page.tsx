@@ -25,7 +25,7 @@ import { format } from "date-fns";
 import { Header } from "@/components/Header";
 import { StatCard } from "@/components/StatCard";
 import { ShiftGrid } from "@/components/ShiftGrid";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { nursesCol, shiftsCol, documentsCol } from "@/lib/collections";
 import type { Nurse, Shift } from "@/types";
 
@@ -41,6 +41,7 @@ export default function DashboardPage() {
   const [nurses, setNurses] = useState<Nurse[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [recent, setRecent] = useState<Shift[]>([]);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -92,7 +93,26 @@ export default function DashboardPage() {
         toast.error(e instanceof Error ? e.message : "Failed to load shifts");
       }
     })();
-  }, []);
+  }, [tick]);
+
+  const assign = async (shiftId: string, nurseId: string) => {
+    const token = await auth.currentUser?.getIdToken();
+    const res = await fetch(`/api/shifts/${shiftId}/assign`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ nurseId }),
+    });
+    if (res.ok) {
+      toast.success("Shift assigned");
+      setTick((t) => t + 1);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      toast.error(data.error ?? "Couldn't assign");
+    }
+  };
 
   return (
     <>
@@ -129,7 +149,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="mt-6">
-          <ShiftGrid nurses={nurses} shifts={shifts} />
+          <ShiftGrid nurses={nurses} shifts={shifts} onAssign={assign} />
         </div>
 
         <div className="mt-6 grid gap-4 lg:grid-cols-3">

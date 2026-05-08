@@ -193,6 +193,80 @@ export const claimShift = async (
   });
 };
 
+export interface AssignResult {
+  ok: boolean;
+  reason?: "not_assignable" | "nurse_not_active" | "role_mismatch" | "not_found";
+  shift?: Shift;
+  detail?: string;
+}
+
+export const assignShift = async (
+  shiftId: string,
+  nurseId: string,
+): Promise<AssignResult> => {
+  const shiftRef = adminDb.collection("shifts").doc(shiftId);
+  const nurseRef = adminDb.collection("nurses").doc(nurseId);
+
+  return adminDb.runTransaction(async (tx) => {
+    const [shiftSnap, nurseSnap] = await Promise.all([
+      tx.get(shiftRef),
+      tx.get(nurseRef),
+    ]);
+    if (!shiftSnap.exists || !nurseSnap.exists) {
+      return { ok: false, reason: "not_found" };
+    }
+    const shift = shiftSnap.data() as Shift;
+    const nurse = nurseSnap.data() as Nurse;
+
+    if (!["draft", "open", "broadcasting"].includes(shift.status)) {
+      return {
+        ok: false,
+        reason: "not_assignable",
+        detail: `Shift is already ${shift.status}.`,
+      };
+    }
+    if (nurse.status !== "active") {
+      return {
+        ok: false,
+        reason: "nurse_not_active",
+        detail: `${nurse.firstName} ${nurse.lastName} is ${nurse.status}.`,
+      };
+    }
+    if (nurse.role !== shift.role) {
+      return {
+        ok: false,
+        reason: "role_mismatch",
+        detail: `Shift needs a ${shift.role}; ${nurse.firstName} is a ${nurse.role}.`,
+      };
+    }
+
+    const now = Timestamp.now();
+    const nurseName = `${nurse.firstName} ${nurse.lastName}`;
+    tx.update(shiftRef, {
+      status: "confirmed",
+      nurseId,
+      nurseName,
+      nursePhone: nurse.phone,
+      claimedAt: now,
+      updatedAt: now,
+    });
+
+    return {
+      ok: true,
+      shift: {
+        ...shift,
+        id: shiftId,
+        status: "confirmed",
+        nurseId,
+        nurseName,
+        nursePhone: nurse.phone,
+        claimedAt: now,
+        updatedAt: now,
+      },
+    };
+  });
+};
+
 export const cancelSpecificShifts = async (
   facilityId: string,
   shiftIds: string[],

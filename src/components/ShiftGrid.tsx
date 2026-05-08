@@ -196,6 +196,7 @@ export function ShiftGrid({
 
 function ShiftPill({ shift }: { shift: Shift }) {
   const cls = STATUS_COLOR[shift.status];
+  const hours = `${formatHour(shift.start.toDate())}–${formatHour(shift.end.toDate())}`;
   return (
     <div
       className={`flex flex-col rounded-md px-2 py-1.5 text-[11px] ring-1 ring-inset ${cls}`}
@@ -204,7 +205,16 @@ function ShiftPill({ shift }: { shift: Shift }) {
       <span className="font-semibold leading-tight">
         {shift.role} · {shift.shiftCode}
       </span>
-      <span className="truncate leading-tight opacity-80">{shift.facilityName}</span>
+      <span className="leading-tight opacity-90">{hours}</span>
+      <span className="truncate leading-tight opacity-70">{shift.facilityName}</span>
     </div>
   );
+}
+
+function formatHour(d: Date): string {
+  const h = d.getHours();
+  const m = d.getMinutes();
+  const ampm = h >= 12 ? "p" : "a";
+  const h12 = h % 12 || 12;
+  return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2, "0")}${ampm}`;
 }

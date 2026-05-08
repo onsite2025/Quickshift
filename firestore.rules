@@ -58,5 +58,11 @@ service cloud.firestore {
       allow read: if isOperator();
       allow write: if false;
     }
+
+    // Operator action audit log — written server-side only.
+    match /auditLogs/{logId} {
+      allow read: if isOperator();
+      allow write: if false;
+    }
   }
 }

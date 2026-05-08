@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { broadcastShift } from "@/lib/dispatch";
 import { adminAuth } from "@/lib/firebase-admin";
+import { writeAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 
@@ -21,6 +22,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   try {
     const result = await broadcastShift(params.id);
+    void writeAudit({
+      actorUid: user.uid,
+      actorEmail: user.email ?? "",
+      action: "shift.broadcast",
+      targetType: "shift",
+      targetId: params.id,
+      details: { sentCount: result.sent },
+    });
     return NextResponse.json(result);
   } catch (err) {
     return NextResponse.json(

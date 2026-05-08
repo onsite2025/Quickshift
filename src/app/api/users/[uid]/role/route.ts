@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
-import type { UserRole } from "@/types";
+import { writeAudit } from "@/lib/audit";
+import type { AppUser, UserRole } from "@/types";
 
 export const runtime = "nodejs";
 
@@ -48,11 +49,22 @@ export async function POST(
     }
   }
 
-  await adminDb
-    .collection("users")
-    .doc(params.uid)
-    .update({ role, updatedAt: Timestamp.now() });
+  const ref = adminDb.collection("users").doc(params.uid);
+  const targetSnap = await ref.get();
+  const targetData = targetSnap.exists ? (targetSnap.data() as AppUser) : null;
+
+  await ref.update({ role, updatedAt: Timestamp.now() });
   await adminAuth.setCustomUserClaims(params.uid, { role });
+
+  void writeAudit({
+    actorUid: me.uid,
+    actorEmail: me.email ?? "",
+    action: "user.role_changed",
+    targetType: "user",
+    targetId: params.uid,
+    targetName: targetData?.email ?? params.uid,
+    details: { previousRole: targetData?.role, newRole: role },
+  });
 
   return NextResponse.json({ ok: true });
 }

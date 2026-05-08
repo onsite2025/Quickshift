@@ -5,6 +5,7 @@ import {
   sendClaimConfirmations,
   sendReassignmentNotice,
 } from "@/lib/dispatch";
+import { writeAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 
@@ -54,6 +55,20 @@ export async function POST(
     if (result.previousNurse) {
       void sendReassignmentNotice(result.shift, result.previousNurse);
     }
+    void writeAudit({
+      actorUid: user.uid,
+      actorEmail: user.email ?? "",
+      action: result.previousNurse ? "shift.reassigned" : "shift.assigned",
+      targetType: "shift",
+      targetId: params.id,
+      targetName: `${result.shift.facilityName} • ${result.shift.role} ${result.shift.shiftCode}`,
+      details: {
+        nurseId: result.shift.nurseId,
+        nurseName: result.shift.nurseName,
+        previousNurseId: result.previousNurse?.id,
+        previousNurseName: result.previousNurse?.name,
+      },
+    });
   }
 
   return NextResponse.json({

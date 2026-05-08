@@ -2,6 +2,8 @@ import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
+import { writeAudit } from "@/lib/audit";
+import type { Facility } from "@/types";
 
 export const runtime = "nodejs";
 
@@ -29,8 +31,18 @@ export async function POST(
     return NextResponse.json({ error: "facility not found" }, { status: 404 });
   }
 
+  const facility = snap.data() as Facility;
   const portalToken = randomBytes(24).toString("hex");
   await ref.update({ portalToken, updatedAt: Timestamp.now() });
+
+  void writeAudit({
+    actorUid: user.uid,
+    actorEmail: user.email ?? "",
+    action: "facility.token_rotated",
+    targetType: "facility",
+    targetId: params.id,
+    targetName: facility.name,
+  });
 
   const proto = req.headers.get("x-forwarded-proto") ?? "https";
   const host =

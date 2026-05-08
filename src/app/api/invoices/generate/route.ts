@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateInvoice } from "@/lib/invoices";
 import { adminAuth } from "@/lib/firebase-admin";
+import { writeAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 
@@ -32,6 +33,20 @@ export async function POST(req: NextRequest) {
       periodEnd: new Date(body.periodEnd),
       taxRate: body.taxRate,
       dueInDays: body.dueInDays,
+    });
+    void writeAudit({
+      actorUid: user.uid,
+      actorEmail: user.email ?? "",
+      action: "invoice.created",
+      targetType: "invoice",
+      targetId: invoice.id ?? "",
+      targetName: invoice.number,
+      details: {
+        facilityId: invoice.facilityId,
+        facilityName: invoice.facilityName,
+        total: invoice.total,
+        lineItemCount: invoice.lineItems.length,
+      },
     });
     return NextResponse.json({ invoice });
   } catch (err) {

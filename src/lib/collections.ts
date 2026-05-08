@@ -9,6 +9,7 @@ import type {
   Invoice,
   Message,
   SmsLogEntry,
+  AuditLogEntry,
 } from "@/types";
 
 const typedCollection = <T = DocumentData>(name: string) =>
@@ -22,6 +23,7 @@ export const timesheetsCol = typedCollection<Timesheet>("timesheets");
 export const invoicesCol = typedCollection<Invoice>("invoices");
 export const messagesCol = typedCollection<Message>("messages");
 export const smsLogsCol = typedCollection<SmsLogEntry>("smsLogs");
+export const auditLogsCol = typedCollection<AuditLogEntry>("auditLogs");
 
 export const COLLECTIONS = {
   nurses: "nurses",
@@ -32,4 +34,5 @@ export const COLLECTIONS = {
   invoices: "invoices",
   messages: "messages",
   smsLogs: "smsLogs",
+  auditLogs: "auditLogs",
 } as const;

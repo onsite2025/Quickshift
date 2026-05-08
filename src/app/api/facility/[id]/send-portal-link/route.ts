@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
 import { normalizePhone, sendSMS } from "@/lib/sms";
+import { writeAudit } from "@/lib/audit";
 import type { Facility } from "@/types";
 
 export const runtime = "nodejs";
@@ -62,6 +63,15 @@ export async function POST(
 
   try {
     const sid = await sendSMS(targetPhone, message);
+    void writeAudit({
+      actorUid: user.uid,
+      actorEmail: user.email ?? "",
+      action: "facility.portal_link_sent",
+      targetType: "facility",
+      targetId: params.id,
+      targetName: facility.name,
+      details: { sentTo: targetPhone },
+    });
     return NextResponse.json({
       ok: true,
       sid,

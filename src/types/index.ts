@@ -198,6 +198,16 @@ export interface SmsLogEntry {
   createdAt: Timestamp;
 }
 
+export interface AuditLogEntry {
+  id?: string;
+  actor: { uid: string; email: string };
+  // dotted action key, e.g. "shift.assigned" or "user.role_changed"
+  action: string;
+  target: { type: string; id: string; name?: string };
+  details?: Record<string, unknown>;
+  createdAt: Timestamp;
+}
+
 export interface ParsedShiftRequest {
   date: string;
   shiftCode: ShiftCode;

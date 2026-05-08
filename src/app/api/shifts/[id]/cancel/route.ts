@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth } from "@/lib/firebase-admin";
 import { cancelShiftAsOperator, sendReassignmentNotice } from "@/lib/dispatch";
+import { writeAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 
@@ -37,6 +38,21 @@ export async function POST(
       name: result.shift.nurseName ?? "Nurse",
     });
   }
+
+  void writeAudit({
+    actorUid: user.uid,
+    actorEmail: user.email ?? "",
+    action: "shift.cancelled",
+    targetType: "shift",
+    targetId: params.id,
+    targetName: result.shift
+      ? `${result.shift.facilityName} • ${result.shift.role} ${result.shift.shiftCode}`
+      : params.id,
+    details: {
+      hadNurse: Boolean(result.shift?.nurseId),
+      nurseName: result.shift?.nurseName,
+    },
+  });
 
   return NextResponse.json({ ok: true });
 }

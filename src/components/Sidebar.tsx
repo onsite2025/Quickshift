@@ -12,6 +12,7 @@ import {
   Receipt,
   Activity,
   UserCog,
+  History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +25,7 @@ const NAV = [
   { href: "/timekeeping", label: "Timekeeping", icon: Clock },
   { href: "/billing", label: "Billing", icon: Receipt },
   { href: "/users", label: "Users", icon: UserCog },
+  { href: "/audit", label: "Audit log", icon: History },
 ];
 
 export function Sidebar() {

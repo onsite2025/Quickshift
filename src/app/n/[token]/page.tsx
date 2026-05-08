@@ -1,19 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   Activity,
   AlertTriangle,
   Calendar,
   Clock,
+  Loader2,
   LogIn,
   LogOut,
   ShieldCheck,
+  Upload,
+  X,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { formatShiftDateLabel, formatShiftHour } from "@/lib/utils";
 import type { NurseRole, NurseStatus, ShiftCode, ShiftStatus } from "@/types";
+
+const DOC_TYPES: { value: string; label: string }[] = [
+  { value: "license", label: "License" },
+  { value: "certification", label: "Certification" },
+  { value: "vaccination", label: "Vaccination" },
+  { value: "background_check", label: "Background check" },
+  { value: "other", label: "Other" },
+];
 
 interface PortalNurse {
   id: string;
@@ -70,6 +81,7 @@ export default function NursePortalPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [clocking, setClocking] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -253,9 +265,14 @@ export default function NursePortalPage() {
         </section>
 
         <section>
-          <div className="mb-3 flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-brand-600" />
-            <h2 className="text-base font-semibold text-ink-900">Compliance</h2>
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-brand-600" />
+              <h2 className="text-base font-semibold text-ink-900">Compliance</h2>
+            </div>
+            <button onClick={() => setUploadOpen(true)} className="btn-secondary">
+              <Upload className="h-4 w-4" /> Upload document
+            </button>
           </div>
           {documents.length === 0 ? (
             <div className="card text-sm text-ink-500">
@@ -283,6 +300,14 @@ export default function NursePortalPage() {
           )}
         </section>
 
+        {uploadOpen && (
+          <UploadDocumentModal
+            token={token as string}
+            onClose={() => setUploadOpen(false)}
+            onUploaded={load}
+          />
+        )}
+
         {recent.length > 0 && (
           <section>
             <div className="mb-3 flex items-center gap-2">
@@ -306,6 +331,130 @@ export default function NursePortalPage() {
           </section>
         )}
       </main>
+    </div>
+  );
+}
+
+function UploadDocumentModal({
+  token,
+  onClose,
+  onUploaded,
+}: {
+  token: string;
+  onClose: () => void;
+  onUploaded: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [type, setType] = useState("license");
+  const [name, setName] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+
+  const onSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!file) {
+      toast.error("Pick a file to upload");
+      return;
+    }
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("type", type);
+      if (name.trim()) fd.append("name", name.trim());
+      if (expiresAt) fd.append("expiresAt", expiresAt);
+      const res = await fetch(`/api/portal-nurse/${token}/document`, {
+        method: "POST",
+        body: fd,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error ?? "Upload failed");
+        return;
+      }
+      toast.success("Document uploaded");
+      onUploaded();
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center">
+      <div className="absolute inset-0 bg-ink-900/40" onClick={onClose} aria-hidden />
+      <div className="relative flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl bg-white shadow-card">
+        <div className="flex shrink-0 items-start justify-between border-b border-ink-200 px-5 py-4">
+          <div>
+            <h3 className="text-lg font-semibold text-ink-900">Upload document</h3>
+            <p className="mt-0.5 text-sm text-ink-500">
+              License, certification, vaccination record, or other compliance.
+            </p>
+          </div>
+          <button onClick={onClose} className="rounded-md p-1 text-ink-400 hover:bg-ink-100">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <form onSubmit={onSubmit} className="flex-1 overflow-y-auto p-5">
+          <div className="space-y-4">
+            <div>
+              <label className="label">Type</label>
+              <select className="input" value={type} onChange={(e) => setType(e.target.value)}>
+                {DOC_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label">Name</label>
+              <input
+                className="input"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="RN License – CA"
+              />
+              <p className="mt-1 text-xs text-ink-500">
+                Optional. Leaving blank uses the file name.
+              </p>
+            </div>
+            <div>
+              <label className="label">Expires</label>
+              <input
+                type="date"
+                className="input"
+                value={expiresAt}
+                onChange={(e) => setExpiresAt(e.target.value)}
+              />
+              <p className="mt-1 text-xs text-ink-500">
+                Recommended for licenses and certifications. We use this to warn before they expire.
+              </p>
+            </div>
+            <div>
+              <label className="label">File</label>
+              <input
+                type="file"
+                accept="application/pdf,image/*"
+                required
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                className="block w-full text-sm"
+              />
+              <p className="mt-1 text-xs text-ink-500">
+                PDF, JPG, PNG, HEIC. Max 4 MB.
+              </p>
+            </div>
+          </div>
+          <div className="mt-5 flex justify-end gap-2">
+            <button type="button" onClick={onClose} className="btn-secondary">
+              Cancel
+            </button>
+            <button type="submit" disabled={busy} className="btn-primary">
+              {busy && <Loader2 className="h-4 w-4 animate-spin" />} Upload
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

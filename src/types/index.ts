@@ -22,6 +22,16 @@ export type ShiftStatus =
 export type DocumentStatus = "valid" | "expiring" | "expired" | "pending_review";
 export type InvoiceStatus = "draft" | "sent" | "paid" | "overdue";
 export type NurseStatus = "active" | "inactive" | "on_leave" | "blocked";
+export type UserRole = "operator" | "nurse" | "pending";
+
+export interface AppUser {
+  id?: string;
+  email: string;
+  role: UserRole;
+  nurseId?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
 
 export interface ShiftTemplate {
   code: ShiftCode;

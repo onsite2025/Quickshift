@@ -7,50 +7,55 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Server (Firebase Admin SDK) bypasses rules for inbound SMS, dispatch, etc.
-    // Client app reads/writes require an authenticated staff user.
+    // role is a custom claim minted by /api/auth/init.
+    function isOperator() {
+      return isSignedIn() && request.auth.token.role == "operator";
+    }
+
+    // Server (admin SDK) bypasses these rules entirely. Web-SDK clients
+    // hit them as a "must be operator" gate for everything operational.
+
+    match /users/{uid} {
+      // Self-read so the AuthProvider can show the current user their role.
+      allow get: if isSignedIn() && request.auth.uid == uid;
+      // Only operators can list / change roles.
+      allow list, update: if isOperator();
+      // user docs are created server-side by /api/auth/init.
+      allow create, delete: if false;
+    }
 
     match /nurses/{nurseId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isOperator();
     }
 
     match /facilities/{facilityId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isOperator();
     }
 
     match /shifts/{shiftId} {
-      allow read: if isSignedIn();
-      // Clients can create draft shifts; status transitions to open/confirmed
-      // happen via the server (admin SDK) in response to inbound SMS.
-      allow create, update: if isSignedIn();
-      allow delete: if isSignedIn();
+      allow read, write: if isOperator();
     }
 
     match /documents/{documentId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isOperator();
     }
 
     match /timesheets/{timesheetId} {
-      allow read: if isSignedIn();
-      // Approval is a client action; clock-in/out happens server-side.
-      allow update: if isSignedIn();
-      allow create, delete: if isSignedIn();
+      allow read, write: if isOperator();
     }
 
     match /invoices/{invoiceId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isOperator();
     }
 
     match /messages/{messageId} {
-      allow read, create: if isSignedIn();
-      allow update, delete: if isSignedIn() &&
-        request.auth.uid == resource.data.fromUserId;
+      allow read, create: if isOperator();
+      allow update, delete: if isOperator();
     }
 
-    // SMS audit log — written by the Twilio webhook (admin SDK bypasses
-    // these rules); operators can read for context / debugging.
+    // SMS audit log — written server-side only; readable by operators.
     match /smsLogs/{logId} {
-      allow read: if isSignedIn();
+      allow read: if isOperator();
       allow write: if false;
     }
   }

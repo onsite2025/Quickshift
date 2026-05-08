@@ -97,24 +97,26 @@ export function ShiftGrid({
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full border-separate border-spacing-0 text-sm">
+      <div>
+        <table className="w-full table-fixed border-separate border-spacing-0 text-sm">
           <thead>
             <tr>
-              <th className="sticky left-0 z-10 w-32 border-b border-ink-200/70 bg-white px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-ink-500 sm:w-40 lg:w-52 lg:px-4">
-                Clinician
+              <th className="sticky left-0 z-10 w-20 border-b border-ink-200/70 bg-white px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-ink-500 sm:w-32 sm:px-3 sm:py-3 sm:text-xs lg:w-52 lg:px-4">
+                <span className="hidden sm:inline">Clinician</span>
+                <span className="sm:hidden">Nurse</span>
               </th>
               {dayList.map((d) => {
                 const today = isSameDay(d, new Date());
                 return (
                   <th
                     key={d.toISOString()}
-                    className={`border-b border-ink-200/70 px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider lg:px-3 ${
+                    className={`border-b border-ink-200/70 px-0.5 py-2 text-left text-[10px] font-semibold uppercase tracking-wider sm:px-2 sm:py-3 sm:text-xs lg:px-3 ${
                       today ? "text-brand-700" : "text-ink-500"
                     }`}
                   >
                     <div className="flex flex-col leading-tight">
-                      <span>{format(d, "EEE")}</span>
+                      <span className="sm:hidden">{format(d, "EEEEE")}</span>
+                      <span className="hidden sm:inline">{format(d, "EEE")}</span>
                       <span className="text-sm font-semibold normal-case tracking-normal text-ink-900 lg:text-base">
                         {format(d, "d")}
                       </span>
@@ -128,11 +130,11 @@ export function ShiftGrid({
           <tbody>
             {openShifts.length > 0 && (
               <tr>
-                <td className="sticky left-0 z-10 w-32 border-b border-ink-100 bg-amber-50/40 px-3 py-3 sm:w-40 lg:w-52 lg:px-4">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-amber-700">
-                    Open shifts
+                <td className="sticky left-0 z-10 w-20 border-b border-ink-100 bg-amber-50/40 px-2 py-2 sm:w-32 sm:px-3 sm:py-3 lg:w-52 lg:px-4">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-700 sm:text-xs">
+                    Open
                   </div>
-                  <div className="text-[11px] text-amber-800/80">awaiting claim</div>
+                  <div className="hidden text-[11px] text-amber-800/80 sm:block">awaiting claim</div>
                 </td>
                 {dayList.map((d) => {
                   const dayKey = format(d, "yyyy-MM-dd");
@@ -140,7 +142,7 @@ export function ShiftGrid({
                   return (
                     <td
                       key={dayKey}
-                      className="min-w-[96px] border-b border-ink-100 bg-amber-50/30 px-1.5 py-2 align-top sm:min-w-[110px] lg:min-w-[128px] lg:px-2"
+                      className="border-b border-ink-100 bg-amber-50/30 px-0.5 py-1.5 align-top sm:px-1.5 sm:py-2 lg:px-2"
                     >
                       <div className="space-y-1">
                         {cellShifts.map((s) => (
@@ -202,16 +204,18 @@ export function ShiftGrid({
 
               return (
                 <tr key={nurse.id} className={`transition-colors ${rowHighlight}`}>
-                  <td className="sticky left-0 z-10 w-32 border-b border-ink-100 bg-white px-3 py-3 sm:w-40 lg:w-52 lg:px-4">
+                  <td className="sticky left-0 z-10 w-20 border-b border-ink-100 bg-white px-2 py-2 sm:w-32 sm:px-3 sm:py-3 lg:w-52 lg:px-4">
                     <div className="flex items-center gap-2 sm:gap-3">
-                      <span className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-700 sm:flex">
+                      <span className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-700 lg:flex">
                         {initials(`${nurse.firstName} ${nurse.lastName}`)}
                       </span>
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-ink-900 lg:text-[15px]">
+                        <div className="truncate text-[11px] font-medium text-ink-900 sm:text-sm lg:text-[15px]">
                           {nurse.firstName} {nurse.lastName}
                         </div>
-                        <div className="text-xs text-ink-500">{nurse.role}</div>
+                        <div className="text-[10px] text-ink-500 sm:text-xs">
+                          {nurse.role}
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -223,7 +227,7 @@ export function ShiftGrid({
                         key={dayKey}
                         onDragOver={onCellDragOver}
                         onDrop={onCellDrop}
-                        className="min-w-[96px] border-b border-ink-100 px-1.5 py-2 align-top sm:min-w-[110px] lg:min-w-[128px] lg:px-2"
+                        className="border-b border-ink-100 px-0.5 py-1.5 align-top sm:px-1.5 sm:py-2 lg:px-2"
                       >
                         <div className="space-y-1">
                           {cellShifts.map((s) => (
@@ -296,7 +300,7 @@ function ShiftPill({
           onClick();
         }
       }}
-      className={`flex flex-col rounded-md px-2 py-1.5 text-[11px] ring-1 ring-inset ${cls} ${
+      className={`flex flex-col overflow-hidden rounded-md px-1 py-0.5 text-[10px] ring-1 ring-inset sm:px-2 sm:py-1.5 sm:text-[11px] ${cls} ${
         onClick ? "cursor-pointer hover:ring-2" : ""
       } ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
       title={
@@ -307,11 +311,18 @@ function ShiftPill({
             : `${shift.facilityName} • ${shift.role} • ${shift.shiftLabel} • ${shift.status}`
       }
     >
-      <span className="font-semibold leading-tight">
-        {shift.role} · {shift.shiftCode}
+      <span className="truncate text-center font-semibold leading-tight sm:text-left">
+        <span className="sm:hidden">{shift.shiftCode}</span>
+        <span className="hidden sm:inline">
+          {shift.role} · {shift.shiftCode}
+        </span>
       </span>
-      <span className="leading-tight opacity-90">{hours}</span>
-      <span className="truncate leading-tight opacity-70">{shift.facilityName}</span>
+      <span className="hidden truncate leading-tight opacity-90 sm:inline">
+        {hours}
+      </span>
+      <span className="hidden truncate leading-tight opacity-70 sm:inline">
+        {shift.facilityName}
+      </span>
     </div>
   );
 }

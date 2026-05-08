@@ -1,11 +1,12 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { addDoc, serverTimestamp, Timestamp } from "firebase/firestore";
+import { addDoc, doc, serverTimestamp, Timestamp, updateDoc } from "firebase/firestore";
 import toast from "react-hot-toast";
 import { Loader2 } from "lucide-react";
+import { db } from "@/lib/firebase";
 import { facilitiesCol } from "@/lib/collections";
-import type { ShiftTemplate } from "@/types";
+import type { Facility, ShiftTemplate } from "@/types";
 
 const DEFAULT_TEMPLATES: ShiftTemplate[] = [
   { code: "AM", label: "AM (7a–3p)", startTime: "07:00", endTime: "15:00" },
@@ -22,26 +23,32 @@ const normalizePhone = (raw: string) => {
 };
 
 export function FacilityForm({
+  facility,
   onClose,
-  onCreated,
+  onSaved,
 }: {
+  facility?: Facility;
   onClose: () => void;
-  onCreated?: () => void;
+  onSaved?: () => void;
 }) {
+  const editing = Boolean(facility?.id);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
-    name: "",
-    address: "",
-    city: "",
-    state: "",
-    zip: "",
-    contactName: "",
-    contactEmail: "",
-    contactPhone: "",
-    inboundPhone: "",
-    billingRate: "",
+    name: facility?.name ?? "",
+    address: facility?.address ?? "",
+    city: facility?.city ?? "",
+    state: facility?.state ?? "",
+    zip: facility?.zip ?? "",
+    contactName: facility?.contactName ?? "",
+    contactEmail: facility?.contactEmail ?? "",
+    contactPhone: facility?.contactPhone ?? "",
+    inboundPhone: facility?.inboundPhone ?? "",
+    billingRate: facility?.billingRate?.toString() ?? "",
+    active: facility?.active ?? true,
   });
-  const [templates, setTemplates] = useState<ShiftTemplate[]>(DEFAULT_TEMPLATES);
+  const [templates, setTemplates] = useState<ShiftTemplate[]>(
+    facility?.shiftTemplates?.length ? facility.shiftTemplates : DEFAULT_TEMPLATES,
+  );
 
   const updateTemplate = (i: number, patch: Partial<ShiftTemplate>) => {
     setTemplates(templates.map((t, idx) => (idx === i ? { ...t, ...patch } : t)));
@@ -51,7 +58,7 @@ export function FacilityForm({
     e.preventDefault();
     setBusy(true);
     try {
-      await addDoc(facilitiesCol, {
+      const payload = {
         name: form.name,
         address: form.address,
         city: form.city,
@@ -63,15 +70,23 @@ export function FacilityForm({
         inboundPhone: form.inboundPhone ? normalizePhone(form.inboundPhone) : undefined,
         billingRate: form.billingRate ? Number(form.billingRate) : undefined,
         shiftTemplates: templates,
-        active: true,
-        createdAt: serverTimestamp() as unknown as Timestamp,
+        active: form.active,
         updatedAt: serverTimestamp() as unknown as Timestamp,
-      });
-      toast.success("Facility added");
-      onCreated?.();
+      };
+      if (editing && facility?.id) {
+        await updateDoc(doc(db, "facilities", facility.id), payload);
+        toast.success("Facility updated");
+      } else {
+        await addDoc(facilitiesCol, {
+          ...payload,
+          createdAt: serverTimestamp() as unknown as Timestamp,
+        });
+        toast.success("Facility added");
+      }
+      onSaved?.();
       onClose();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to add facility");
+      toast.error(err instanceof Error ? err.message : "Save failed");
     } finally {
       setBusy(false);
     }
@@ -155,10 +170,22 @@ export function FacilityForm({
         </div>
       </div>
 
+      {editing && (
+        <label className="flex items-center gap-2 text-sm text-ink-700">
+          <input
+            type="checkbox"
+            checked={form.active}
+            onChange={(e) => setForm({ ...form, active: e.target.checked })}
+          />
+          Active (uncheck to disable this facility)
+        </label>
+      )}
+
       <div className="flex justify-end gap-2 pt-2">
         <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
         <button type="submit" disabled={busy} className="btn-primary">
-          {busy && <Loader2 className="h-4 w-4 animate-spin" />} Add facility
+          {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+          {editing ? "Save changes" : "Add facility"}
         </button>
       </div>
     </form>

@@ -16,6 +16,7 @@ export default function FacilitiesPage() {
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Facility | null>(null);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -58,6 +59,7 @@ export default function FacilitiesPage() {
         ) : (
           <DataTable
             rows={facilities}
+            onRowClick={(f) => setEditing(f)}
             columns={[
               { key: "name", header: "Facility" },
               {
@@ -101,7 +103,23 @@ export default function FacilitiesPage() {
       </main>
 
       <Modal open={open} onClose={() => setOpen(false)} title="Add facility" description="Configure shift templates so AI dispatch knows their hours." size="lg">
-        <FacilityForm onClose={() => setOpen(false)} onCreated={() => setTick((t) => t + 1)} />
+        <FacilityForm onClose={() => setOpen(false)} onSaved={() => setTick((t) => t + 1)} />
+      </Modal>
+
+      <Modal
+        open={editing !== null}
+        onClose={() => setEditing(null)}
+        title={editing?.name ?? "Edit facility"}
+        description="Update name, contact info, shift templates, or status."
+        size="lg"
+      >
+        {editing && (
+          <FacilityForm
+            facility={editing}
+            onClose={() => setEditing(null)}
+            onSaved={() => setTick((t) => t + 1)}
+          />
+        )}
       </Modal>
     </>
   );

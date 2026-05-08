@@ -196,5 +196,4 @@ export type ParsedFacilityIntent =
   | { action: "request"; shifts: ParsedShiftRequest[] }
   | { action: "modify"; shifts: ParsedShiftRequest[]; details?: string }
   | { action: "cancel"; scope: "all" | "specific"; details?: string }
-  | { action: "needs_clarification"; question: string }
-  | { action: "unclear"; reason: string };
+  | { action: "reply"; text: string };

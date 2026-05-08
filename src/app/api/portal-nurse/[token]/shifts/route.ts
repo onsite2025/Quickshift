@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase-admin";
+import { enforcePortalRateLimit } from "@/lib/rate-limit";
 import type { ComplianceDocument, Nurse, Shift } from "@/types";
 
 export const runtime = "nodejs";
@@ -19,9 +20,16 @@ const findNurseByToken = async (token: string) => {
 };
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { token: string } },
 ) {
+  const limited = await enforcePortalRateLimit(req, {
+    token: params.token,
+    endpoint: "nurse-shifts",
+    limit: 60,
+  });
+  if (limited) return limited;
+
   const nurse = await findNurseByToken(params.token);
   if (!nurse) {
     return NextResponse.json({ error: "invalid link" }, { status: 404 });

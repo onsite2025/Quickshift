@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { adminDb, adminStorage } from "@/lib/firebase-admin";
 import { computeDocumentStatus, refreshNurseCompliance } from "@/lib/compliance";
+import { enforcePortalRateLimit } from "@/lib/rate-limit";
 import type { ComplianceDocument, Nurse } from "@/types";
 
 export const runtime = "nodejs";
@@ -31,6 +32,13 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { token: string } },
 ) {
+  const limited = await enforcePortalRateLimit(req, {
+    token: params.token,
+    endpoint: "nurse-document",
+    limit: 5,
+  });
+  if (limited) return limited;
+
   const nurseSnap = await adminDb
     .collection("nurses")
     .where("portalToken", "==", params.token)

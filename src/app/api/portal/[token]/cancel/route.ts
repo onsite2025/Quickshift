@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { cancelSpecificShifts } from "@/lib/dispatch";
+import { enforcePortalRateLimit } from "@/lib/rate-limit";
 import type { Facility } from "@/types";
 
 export const runtime = "nodejs";
@@ -9,6 +10,13 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { token: string } },
 ) {
+  const limited = await enforcePortalRateLimit(req, {
+    token: params.token,
+    endpoint: "facility-cancel",
+    limit: 20,
+  });
+  if (limited) return limited;
+
   const facSnap = await adminDb
     .collection("facilities")
     .where("portalToken", "==", params.token)

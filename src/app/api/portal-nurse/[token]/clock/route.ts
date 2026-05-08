@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { clockIn, clockOut } from "@/lib/timekeeping";
+import { enforcePortalRateLimit } from "@/lib/rate-limit";
 import type { Nurse } from "@/types";
 
 export const runtime = "nodejs";
@@ -9,6 +10,13 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { token: string } },
 ) {
+  const limited = await enforcePortalRateLimit(req, {
+    token: params.token,
+    endpoint: "nurse-clock",
+    limit: 10,
+  });
+  if (limited) return limited;
+
   const snap = await adminDb
     .collection("nurses")
     .where("portalToken", "==", params.token)

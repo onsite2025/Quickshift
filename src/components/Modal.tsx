@@ -42,8 +42,10 @@ export function Modal({
         onClick={onClose}
         aria-hidden
       />
-      <div className={`relative w-full ${widths[size]} rounded-2xl bg-white shadow-card`}>
-        <div className="flex items-start justify-between border-b border-ink-200/70 px-6 py-4">
+      <div
+        className={`relative flex max-h-[90vh] w-full flex-col rounded-2xl bg-white shadow-card ${widths[size]}`}
+      >
+        <div className="flex shrink-0 items-start justify-between border-b border-ink-200/70 px-6 py-4">
           <div>
             <h3 className="text-lg font-semibold text-ink-900">{title}</h3>
             {description && <p className="mt-1 text-sm text-ink-500">{description}</p>}
@@ -56,7 +58,7 @@ export function Modal({
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="p-6">{children}</div>
+        <div className="flex-1 overflow-y-auto p-6">{children}</div>
       </div>
     </div>
   );

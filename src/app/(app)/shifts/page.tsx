@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
 import { Modal } from "@/components/Modal";
 import { ShiftGrid } from "@/components/ShiftGrid";
+import { ShiftActionsModal } from "@/components/ShiftActionsModal";
 import { ShiftForm } from "@/components/forms/ShiftForm";
 import { auth } from "@/lib/firebase";
 import { nursesCol, shiftsCol } from "@/lib/collections";
@@ -34,6 +35,7 @@ export default function ShiftsPage() {
   const [showCancelled, setShowCancelled] = useState(false);
   const [open, setOpen] = useState(false);
   const [tick, setTick] = useState(0);
+  const [actionsShift, setActionsShift] = useState<Shift | null>(null);
 
   const visibleShifts = showCancelled
     ? shifts
@@ -133,7 +135,12 @@ export default function ShiftsPage() {
         />
 
         {view === "grid" ? (
-          <ShiftGrid nurses={nurses} shifts={shifts} onAssign={assign} />
+          <ShiftGrid
+            nurses={nurses}
+            shifts={shifts}
+            onAssign={assign}
+            onShiftClick={(s) => setActionsShift(s)}
+          />
         ) : (
           <DataTable
             rows={visibleShifts}
@@ -200,6 +207,15 @@ export default function ShiftsPage() {
       <Modal open={open} onClose={() => setOpen(false)} title="New shift" description="The shift will be sent to qualified clinicians via SMS." size="lg">
         <ShiftForm onClose={() => setOpen(false)} onCreated={() => setTick((t) => t + 1)} />
       </Modal>
+
+      {actionsShift && (
+        <ShiftActionsModal
+          shift={actionsShift}
+          nurses={nurses}
+          onClose={() => setActionsShift(null)}
+          onChanged={() => setTick((t) => t + 1)}
+        />
+      )}
     </>
   );
 }

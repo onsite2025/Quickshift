@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth } from "@/lib/firebase-admin";
-import { assignShift, sendClaimConfirmations } from "@/lib/dispatch";
+import {
+  assignShift,
+  sendClaimConfirmations,
+  sendReassignmentNotice,
+} from "@/lib/dispatch";
 
 export const runtime = "nodejs";
 
@@ -45,7 +49,15 @@ export async function POST(
 
   // Fire-and-forget so the operator gets immediate UI feedback even if
   // Twilio is slow or rate-limited.
-  if (result.shift) void sendClaimConfirmations(result.shift);
+  if (result.shift) {
+    void sendClaimConfirmations(result.shift);
+    if (result.previousNurse) {
+      void sendReassignmentNotice(result.shift, result.previousNurse);
+    }
+  }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({
+    ok: true,
+    reassigned: Boolean(result.previousNurse),
+  });
 }

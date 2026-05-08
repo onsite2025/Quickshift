@@ -22,11 +22,13 @@ export function ShiftGrid({
   shifts,
   days = 7,
   onAssign,
+  onShiftClick,
 }: {
   nurses: Nurse[];
   shifts: Shift[];
   days?: number;
   onAssign?: (shiftId: string, nurseId: string) => void | Promise<void>;
+  onShiftClick?: (shift: Shift) => void;
 }) {
   const [anchor, setAnchor] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [dragShiftId, setDragShiftId] = useState<string | null>(null);
@@ -146,6 +148,7 @@ export function ShiftGrid({
                             key={s.id}
                             shift={s}
                             draggable={Boolean(onAssign)}
+                            onClick={onShiftClick ? () => onShiftClick(s) : undefined}
                             onDragStart={(e) => {
                               if (!s.id) return;
                               e.dataTransfer.effectAllowed = "move";
@@ -224,7 +227,22 @@ export function ShiftGrid({
                       >
                         <div className="space-y-1">
                           {cellShifts.map((s) => (
-                            <ShiftPill key={s.id} shift={s} />
+                            <ShiftPill
+                              key={s.id}
+                              shift={s}
+                              onClick={onShiftClick ? () => onShiftClick(s) : undefined}
+                              draggable={Boolean(onAssign) && s.status === "confirmed"}
+                              onDragStart={(e) => {
+                                if (!s.id) return;
+                                e.dataTransfer.effectAllowed = "move";
+                                e.dataTransfer.setData("text/plain", s.id);
+                                setDragShiftId(s.id);
+                              }}
+                              onDragEnd={() => {
+                                setDragShiftId(null);
+                                setDragOverNurseId(null);
+                              }}
+                            />
                           ))}
                         </div>
                       </td>
@@ -251,11 +269,13 @@ export function ShiftGrid({
 function ShiftPill({
   shift,
   draggable = false,
+  onClick,
   onDragStart,
   onDragEnd,
 }: {
   shift: Shift;
   draggable?: boolean;
+  onClick?: () => void;
   onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void;
   onDragEnd?: (e: React.DragEvent<HTMLDivElement>) => void;
 }) {
@@ -263,16 +283,28 @@ function ShiftPill({
   const hours = `${formatShiftHour(shift.start.toDate())}–${formatShiftHour(shift.end.toDate())}`;
   return (
     <div
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (!onClick) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       className={`flex flex-col rounded-md px-2 py-1.5 text-[11px] ring-1 ring-inset ${cls} ${
-        draggable ? "cursor-grab active:cursor-grabbing" : ""
-      }`}
+        onClick ? "cursor-pointer hover:ring-2" : ""
+      } ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
       title={
         draggable
-          ? `Drag to a clinician's row to assign · ${shift.facilityName} • ${shift.role} • ${shift.shiftLabel}`
-          : `${shift.facilityName} • ${shift.role} • ${shift.shiftLabel} • ${shift.status}`
+          ? `Drag to a clinician, or tap for actions · ${shift.facilityName} • ${shift.role} • ${shift.shiftLabel}`
+          : onClick
+            ? `Tap for actions · ${shift.facilityName} • ${shift.role} • ${shift.shiftLabel}`
+            : `${shift.facilityName} • ${shift.role} • ${shift.shiftLabel} • ${shift.status}`
       }
     >
       <span className="font-semibold leading-tight">

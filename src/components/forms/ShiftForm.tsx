@@ -25,7 +25,11 @@ export function ShiftForm({ onClose, onCreated }: { onClose: () => void; onCreat
   useEffect(() => {
     (async () => {
       const snap = await getDocs(facilitiesCol);
-      setFacilities(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Facility) })));
+      setFacilities(
+        snap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as Facility) }))
+          .filter((f) => f.active !== false),
+      );
     })();
   }, []);
 

@@ -25,6 +25,7 @@ import { format } from "date-fns";
 import { Header } from "@/components/Header";
 import { StatCard } from "@/components/StatCard";
 import { ShiftGrid } from "@/components/ShiftGrid";
+import { ShiftActionsModal } from "@/components/ShiftActionsModal";
 import { auth, db } from "@/lib/firebase";
 import { nursesCol, shiftsCol, documentsCol } from "@/lib/collections";
 import type { Nurse, Shift } from "@/types";
@@ -42,6 +43,7 @@ export default function DashboardPage() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [recent, setRecent] = useState<Shift[]>([]);
   const [tick, setTick] = useState(0);
+  const [actionsShift, setActionsShift] = useState<Shift | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -159,7 +161,12 @@ export default function DashboardPage() {
         </div>
 
         <div className="mt-6">
-          <ShiftGrid nurses={nurses} shifts={shifts} onAssign={assign} />
+          <ShiftGrid
+            nurses={nurses}
+            shifts={shifts}
+            onAssign={assign}
+            onShiftClick={(s) => setActionsShift(s)}
+          />
         </div>
 
         <div className="mt-6 grid gap-4 lg:grid-cols-3">
@@ -217,6 +224,15 @@ export default function DashboardPage() {
           </div>
         </div>
       </main>
+
+      {actionsShift && (
+        <ShiftActionsModal
+          shift={actionsShift}
+          nurses={nurses}
+          onClose={() => setActionsShift(null)}
+          onChanged={() => setTick((t) => t + 1)}
+        />
+      )}
     </>
   );
 }

@@ -22,6 +22,12 @@ export async function POST(
   }
   const doc = facSnap.docs[0]!;
   const facility: Facility = { id: doc.id, ...(doc.data() as Facility) };
+  if (facility.active === false) {
+    return NextResponse.json(
+      { error: "This facility is inactive. Contact QuickCare to reactivate." },
+      { status: 403 },
+    );
+  }
 
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "invalid body" }, { status: 400 });

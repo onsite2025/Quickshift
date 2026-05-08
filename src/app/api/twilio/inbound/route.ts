@@ -100,6 +100,11 @@ async function handleFacilityRequest(
     return xml(text);
   };
 
+  if (facility.active === false) {
+    return reply(
+      `${facility.name} is currently inactive. Please contact your QuickCare coordinator.`,
+    );
+  }
   if (!facility.shiftTemplates?.length) {
     return reply(
       `No shift templates configured for ${facility.name}. Please add AM/PM/NOC templates in QuickShift first.`,

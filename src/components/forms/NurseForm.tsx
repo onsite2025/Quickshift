@@ -4,7 +4,9 @@ import { FormEvent, useState } from "react";
 import { addDoc, serverTimestamp, Timestamp } from "firebase/firestore";
 import toast from "react-hot-toast";
 import { Loader2 } from "lucide-react";
+import { auth } from "@/lib/firebase";
 import { nursesCol } from "@/lib/collections";
+import { generatePortalToken } from "@/lib/utils";
 import type { NurseRole, NurseStatus } from "@/types";
 
 const ROLES: NurseRole[] = ["RN", "LPN", "CNA", "NP"];
@@ -37,7 +39,8 @@ export function NurseForm({ onClose, onCreated }: { onClose: () => void; onCreat
     e.preventDefault();
     setBusy(true);
     try {
-      await addDoc(nursesCol, {
+      const portalToken = generatePortalToken();
+      const ref = await addDoc(nursesCol, {
         firstName: form.firstName,
         lastName: form.lastName,
         email: form.email,
@@ -50,10 +53,21 @@ export function NurseForm({ onClose, onCreated }: { onClose: () => void; onCreat
           : undefined,
         hourlyRate: form.hourlyRate ? Number(form.hourlyRate) : undefined,
         status: form.status,
+        portalToken,
         createdAt: serverTimestamp() as unknown as Timestamp,
         updatedAt: serverTimestamp() as unknown as Timestamp,
       });
       toast.success("Nurse added");
+      // Fire-and-forget: text the welcome link to the nurse's mobile.
+      const idToken = await auth.currentUser?.getIdToken();
+      fetch(`/api/nurse/${ref.id}/send-portal-link`, {
+        method: "POST",
+        headers: idToken ? { Authorization: `Bearer ${idToken}` } : undefined,
+      })
+        .then(async (res) => {
+          if (res.ok) toast.success("Portal link sent to nurse's phone");
+        })
+        .catch(() => {});
       onCreated?.();
       onClose();
     } catch (err) {

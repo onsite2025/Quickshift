@@ -45,6 +45,8 @@ export interface Nurse {
   status: NurseStatus;
   blockedReason?: string;
   facilityIds?: string[];
+  // Possessing this token grants access to the nurse's portal page.
+  portalToken?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

@@ -195,8 +195,14 @@ export const claimShift = async (
 
 export interface AssignResult {
   ok: boolean;
-  reason?: "not_assignable" | "nurse_not_active" | "role_mismatch" | "not_found";
+  reason?:
+    | "not_assignable"
+    | "nurse_not_active"
+    | "role_mismatch"
+    | "same_nurse"
+    | "not_found";
   shift?: Shift;
+  previousNurse?: { id: string; name: string; phone: string };
   detail?: string;
 }
 
@@ -218,11 +224,13 @@ export const assignShift = async (
     const shift = shiftSnap.data() as Shift;
     const nurse = nurseSnap.data() as Nurse;
 
-    if (!["draft", "open", "broadcasting"].includes(shift.status)) {
+    // Allow new assignment AND reassignment of an already-confirmed shift.
+    // Block in_progress / completed / cancelled.
+    if (!["draft", "open", "broadcasting", "confirmed"].includes(shift.status)) {
       return {
         ok: false,
         reason: "not_assignable",
-        detail: `Shift is already ${shift.status}.`,
+        detail: `Shift is ${shift.status} — can't reassign from here.`,
       };
     }
     if (nurse.status !== "active") {
@@ -239,6 +247,22 @@ export const assignShift = async (
         detail: `Shift needs a ${shift.role}; ${nurse.firstName} is a ${nurse.role}.`,
       };
     }
+    if (shift.nurseId === nurseId) {
+      return {
+        ok: false,
+        reason: "same_nurse",
+        detail: "That nurse is already assigned to this shift.",
+      };
+    }
+
+    const previousNurse =
+      shift.status === "confirmed" && shift.nurseId && shift.nursePhone
+        ? {
+            id: shift.nurseId,
+            name: shift.nurseName ?? "Nurse",
+            phone: shift.nursePhone,
+          }
+        : undefined;
 
     const now = Timestamp.now();
     const nurseName = `${nurse.firstName} ${nurse.lastName}`;
@@ -253,6 +277,7 @@ export const assignShift = async (
 
     return {
       ok: true,
+      previousNurse,
       shift: {
         ...shift,
         id: shiftId,
@@ -265,6 +290,60 @@ export const assignShift = async (
       },
     };
   });
+};
+
+const fmtRange = (start: Date, end: Date) => {
+  const fmt = (d: Date) =>
+    d.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: "UTC",
+    });
+  return `${fmt(start)}–${fmt(end)}`;
+};
+
+export const sendReassignmentNotice = async (
+  shift: Shift,
+  previousNurse: { phone: string; name: string },
+) => {
+  if (!previousNurse.phone) return;
+  const msg = `QuickShift: heads up — your ${shift.shiftLabel} on ${fmtDate(shift.date)} (${fmtRange(shift.start.toDate(), shift.end.toDate())}) at ${shift.facilityName} has been reassigned. No need to show up; your coordinator will follow up.`;
+  try {
+    await sendSMS(previousNurse.phone, msg);
+  } catch (err) {
+    console.error("reassignment notice failed", err);
+  }
+};
+
+export interface CancelOneResult {
+  ok: boolean;
+  reason?: "not_found" | "not_cancellable";
+  shift?: Shift;
+  detail?: string;
+}
+
+// Operator-initiated cancel that allows cancelling confirmed shifts too
+// (returns the prior nurse so the caller can SMS them a heads-up).
+export const cancelShiftAsOperator = async (
+  shiftId: string,
+): Promise<CancelOneResult> => {
+  const ref = adminDb.collection("shifts").doc(shiftId);
+  const snap = await ref.get();
+  if (!snap.exists) return { ok: false, reason: "not_found" };
+  const shift = snap.data() as Shift;
+  if (["completed", "cancelled"].includes(shift.status)) {
+    return {
+      ok: false,
+      reason: "not_cancellable",
+      detail: `Shift is already ${shift.status}.`,
+    };
+  }
+  const now = Timestamp.now();
+  await ref.update({ status: "cancelled", updatedAt: now });
+  return {
+    ok: true,
+    shift: { ...shift, id: shiftId, status: "cancelled", updatedAt: now },
+  };
 };
 
 export const cancelSpecificShifts = async (

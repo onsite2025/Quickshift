@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import { addDoc, doc, serverTimestamp, Timestamp, updateDoc } from "firebase/firestore";
 import toast from "react-hot-toast";
-import { Copy, Link as LinkIcon, Loader2, Send } from "lucide-react";
+import { Copy, Link as LinkIcon, Loader2, RotateCw, Send } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
 import { facilitiesCol } from "@/lib/collections";
 import { generatePortalToken } from "@/lib/utils";
@@ -59,6 +59,7 @@ export function FacilityForm({
   const [portalToken, setPortalToken] = useState(facility?.portalToken ?? "");
   const [linkPhone, setLinkPhone] = useState(facility?.contactPhone ?? "");
   const [sendingLink, setSendingLink] = useState(false);
+  const [rotating, setRotating] = useState(false);
 
   const portalLink =
     portalToken && typeof window !== "undefined"
@@ -101,6 +102,36 @@ export function FacilityForm({
       toast.success("Link copied");
     } catch {
       toast.error("Copy failed — select and copy manually.");
+    }
+  };
+
+  const rotatePortalToken = async () => {
+    if (!facility?.id) return;
+    if (
+      !window.confirm(
+        "Rotate the portal link?\n\nThe current link will stop working immediately. Anyone using it will need the new one re-sent.",
+      )
+    )
+      return;
+    setRotating(true);
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      const res = await fetch(
+        `/api/facility/${facility.id}/rotate-portal-token`,
+        {
+          method: "POST",
+          headers: idToken ? { Authorization: `Bearer ${idToken}` } : undefined,
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error ?? "Rotation failed");
+        return;
+      }
+      setPortalToken(data.portalToken);
+      toast.success("Link rotated. Old link is invalid — send the new one to anyone who needs it.");
+    } finally {
+      setRotating(false);
     }
   };
 
@@ -214,6 +245,16 @@ export function FacilityForm({
               <input readOnly className="input flex-1 font-mono text-xs" value={portalLink} />
               <button type="button" onClick={copyPortalLink} className="btn-secondary shrink-0">
                 <Copy className="h-4 w-4" /> Copy
+              </button>
+              <button
+                type="button"
+                onClick={rotatePortalToken}
+                disabled={rotating}
+                className="btn-secondary shrink-0 text-rose-600 hover:bg-rose-50"
+                title="Invalidate the current link and generate a new one"
+              >
+                {rotating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
+                Rotate
               </button>
             </div>
           ) : (

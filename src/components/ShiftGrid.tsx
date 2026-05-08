@@ -101,7 +101,7 @@ export function ShiftGrid({
         <table className="min-w-full border-separate border-spacing-0 text-sm">
           <thead>
             <tr>
-              <th className="sticky left-0 z-10 w-56 border-b border-ink-200/70 bg-white px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-ink-500">
+              <th className="sticky left-0 z-10 w-32 border-b border-ink-200/70 bg-white px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-ink-500 sm:w-40 lg:w-52 lg:px-4">
                 Clinician
               </th>
               {dayList.map((d) => {
@@ -109,13 +109,13 @@ export function ShiftGrid({
                 return (
                   <th
                     key={d.toISOString()}
-                    className={`border-b border-ink-200/70 px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider ${
+                    className={`border-b border-ink-200/70 px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider lg:px-3 ${
                       today ? "text-brand-700" : "text-ink-500"
                     }`}
                   >
                     <div className="flex flex-col leading-tight">
                       <span>{format(d, "EEE")}</span>
-                      <span className="text-base font-semibold normal-case tracking-normal text-ink-900">
+                      <span className="text-sm font-semibold normal-case tracking-normal text-ink-900 lg:text-base">
                         {format(d, "d")}
                       </span>
                     </div>
@@ -128,7 +128,7 @@ export function ShiftGrid({
           <tbody>
             {openShifts.length > 0 && (
               <tr>
-                <td className="sticky left-0 z-10 border-b border-ink-100 bg-amber-50/40 px-4 py-3">
+                <td className="sticky left-0 z-10 w-32 border-b border-ink-100 bg-amber-50/40 px-3 py-3 sm:w-40 lg:w-52 lg:px-4">
                   <div className="text-xs font-semibold uppercase tracking-wider text-amber-700">
                     Open shifts
                   </div>
@@ -140,7 +140,7 @@ export function ShiftGrid({
                   return (
                     <td
                       key={dayKey}
-                      className="min-w-[140px] border-b border-ink-100 bg-amber-50/30 px-2 py-2 align-top"
+                      className="min-w-[96px] border-b border-ink-100 bg-amber-50/30 px-1.5 py-2 align-top sm:min-w-[110px] lg:min-w-[128px] lg:px-2"
                     >
                       <div className="space-y-1">
                         {cellShifts.map((s) => (
@@ -202,13 +202,13 @@ export function ShiftGrid({
 
               return (
                 <tr key={nurse.id} className={`transition-colors ${rowHighlight}`}>
-                  <td className="sticky left-0 z-10 w-56 border-b border-ink-100 bg-white px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-700">
+                  <td className="sticky left-0 z-10 w-32 border-b border-ink-100 bg-white px-3 py-3 sm:w-40 lg:w-52 lg:px-4">
+                    <div className="flex items-center gap-2 sm:gap-3">
+                      <span className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-700 sm:flex">
                         {initials(`${nurse.firstName} ${nurse.lastName}`)}
                       </span>
                       <div className="min-w-0">
-                        <div className="truncate font-medium text-ink-900">
+                        <div className="truncate text-sm font-medium text-ink-900 lg:text-[15px]">
                           {nurse.firstName} {nurse.lastName}
                         </div>
                         <div className="text-xs text-ink-500">{nurse.role}</div>
@@ -223,7 +223,7 @@ export function ShiftGrid({
                         key={dayKey}
                         onDragOver={onCellDragOver}
                         onDrop={onCellDrop}
-                        className="min-w-[140px] border-b border-ink-100 px-2 py-2 align-top"
+                        className="min-w-[96px] border-b border-ink-100 px-1.5 py-2 align-top sm:min-w-[110px] lg:min-w-[128px] lg:px-2"
                       >
                         <div className="space-y-1">
                           {cellShifts.map((s) => (

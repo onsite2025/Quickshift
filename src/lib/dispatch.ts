@@ -398,6 +398,66 @@ export const cancelSpecificShifts = async (
   return { count: cancelled.length, cancelled };
 };
 
+export interface DuplicateResult {
+  created: Array<{ id: string; date: string }>;
+}
+
+export const duplicateShift = async (
+  shiftId: string,
+  targetDates: string[],
+): Promise<DuplicateResult> => {
+  const sourceSnap = await adminDb.collection("shifts").doc(shiftId).get();
+  if (!sourceSnap.exists) throw new Error("Shift not found");
+  const source = sourceSnap.data() as Shift;
+
+  const facSnap = await adminDb
+    .collection("facilities")
+    .doc(source.facilityId)
+    .get();
+  if (!facSnap.exists) throw new Error("Facility not found");
+  const facility = facSnap.data() as Facility;
+  const template =
+    facility.shiftTemplates.find((t) => t.code === source.shiftCode) ??
+    facility.shiftTemplates[0];
+  if (!template) throw new Error("No shift template configured");
+
+  const created: Array<{ id: string; date: string }> = [];
+
+  for (const date of targetDates) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+
+    // Same wall-clock-as-UTC convention used for original creates.
+    const startStr = padTime(template.startTime);
+    const endStr = padTime(template.endTime);
+    const start = new Date(`${date}T${startStr}:00.000Z`);
+    let end = new Date(`${date}T${endStr}:00.000Z`);
+    if (end.getTime() <= start.getTime()) {
+      end = new Date(end.getTime() + 24 * 60 * 60 * 1000);
+    }
+
+    const now = Timestamp.now();
+    const ref = await adminDb.collection("shifts").add({
+      facilityId: source.facilityId,
+      facilityName: source.facilityName,
+      role: source.role,
+      shiftCode: source.shiftCode,
+      shiftLabel: template.label,
+      date,
+      start: Timestamp.fromDate(start),
+      end: Timestamp.fromDate(end),
+      status: "draft",
+      hourlyRate: source.hourlyRate,
+      notes: source.notes,
+      broadcast: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    created.push({ id: ref.id, date });
+  }
+
+  return { created };
+};
+
 export const cancelOpenFacilityShifts = async (
   facilityId: string,
 ): Promise<{ count: number }> => {

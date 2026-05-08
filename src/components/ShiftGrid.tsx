@@ -199,9 +199,11 @@ function ShiftPill({ shift }: { shift: Shift }) {
   return (
     <div
       className={`flex flex-col rounded-md px-2 py-1.5 text-[11px] ring-1 ring-inset ${cls}`}
-      title={`${shift.facilityName} • ${shift.shiftLabel} • ${shift.status}`}
+      title={`${shift.facilityName} • ${shift.role} • ${shift.shiftLabel} • ${shift.status}`}
     >
-      <span className="font-semibold leading-tight">{shift.shiftLabel}</span>
+      <span className="font-semibold leading-tight">
+        {shift.role} · {shift.shiftCode}
+      </span>
       <span className="truncate leading-tight opacity-80">{shift.facilityName}</span>
     </div>
   );

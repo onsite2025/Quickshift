@@ -98,6 +98,58 @@ export default function ShiftsPage() {
     }
   };
 
+  const duplicate = async (
+    shiftId: string,
+    date: string,
+    nurseId: string | null,
+  ) => {
+    if (!auth.currentUser) {
+      toast.error("You're signed out — refresh the page and sign in again.");
+      return;
+    }
+    let token: string;
+    try {
+      token = await auth.currentUser.getIdToken(true);
+    } catch (err) {
+      toast.error(`Auth token error: ${err instanceof Error ? err.message : "unknown"}`);
+      return;
+    }
+    const dupRes = await fetch(`/api/shifts/${shiftId}/duplicate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ dates: [date], broadcast: false }),
+    });
+    const dupData = await dupRes.json().catch(() => ({}));
+    if (!dupRes.ok) {
+      toast.error(dupData.error ?? `Duplicate failed (HTTP ${dupRes.status})`);
+      return;
+    }
+    const newId: string | undefined = dupData.created?.[0]?.id;
+    if (nurseId && newId) {
+      const assignRes = await fetch(`/api/shifts/${newId}/assign`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ nurseId }),
+      });
+      if (!assignRes.ok) {
+        const data = await assignRes.json().catch(() => ({}));
+        toast.error(`Duplicated, but assign failed: ${data.error ?? assignRes.status}`);
+        setTick((t) => t + 1);
+        return;
+      }
+      toast.success("Duplicated and assigned");
+    } else {
+      toast.success("Duplicated as draft");
+    }
+    setTick((t) => t + 1);
+  };
+
   return (
     <>
       <Header title="Shifts" description="Schedule, broadcast, and track every shift." />
@@ -139,6 +191,7 @@ export default function ShiftsPage() {
             nurses={nurses}
             shifts={shifts}
             onAssign={assign}
+            onDuplicate={duplicate}
             onShiftClick={(s) => setActionsShift(s)}
           />
         ) : (

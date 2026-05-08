@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { addDays, format, startOfWeek, isSameDay } from "date-fns";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy } from "lucide-react";
 import type { Nurse, Shift, ShiftStatus } from "@/types";
 import { initials, formatShiftHour } from "@/lib/utils";
 
@@ -22,17 +22,25 @@ export function ShiftGrid({
   shifts,
   days = 7,
   onAssign,
+  onDuplicate,
   onShiftClick,
 }: {
   nurses: Nurse[];
   shifts: Shift[];
   days?: number;
   onAssign?: (shiftId: string, nurseId: string) => void | Promise<void>;
+  onDuplicate?: (
+    shiftId: string,
+    date: string,
+    nurseId: string | null,
+  ) => void | Promise<void>;
   onShiftClick?: (shift: Shift) => void;
 }) {
   const [anchor, setAnchor] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [dragShiftId, setDragShiftId] = useState<string | null>(null);
   const [dragOverNurseId, setDragOverNurseId] = useState<string | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+  const [duplicateMode, setDuplicateMode] = useState(false);
 
   const dayList = useMemo(
     () => Array.from({ length: days }, (_, i) => addDays(anchor, i)),
@@ -74,6 +82,27 @@ export function ShiftGrid({
           </p>
         </div>
         <div className="flex items-center gap-1">
+          {onDuplicate && (
+            <button
+              className={`btn-ghost gap-1.5 ${
+                duplicateMode
+                  ? "bg-brand-50 text-brand-700 hover:bg-brand-100"
+                  : ""
+              }`}
+              onClick={() => {
+                setDuplicateMode((v) => !v);
+                setDragShiftId(null);
+                setDragOverNurseId(null);
+                setDragOverKey(null);
+              }}
+              title="Drag any shift to a target day to copy it"
+            >
+              <Copy className="h-4 w-4" />
+              <span className="hidden sm:inline">
+                {duplicateMode ? "Done" : "Duplicate"}
+              </span>
+            </button>
+          )}
           <button
             className="btn-ghost px-2"
             onClick={() => setAnchor(addDays(anchor, -days))}
@@ -96,6 +125,14 @@ export function ShiftGrid({
           </button>
         </div>
       </div>
+
+      {duplicateMode && (
+        <div className="border-b border-brand-200 bg-brand-50/60 px-5 py-2 text-xs text-brand-800">
+          <span className="font-semibold">Duplicate mode:</span> drag any shift
+          to a day. Drop on a clinician's row to assign the copy to them, or on
+          Open shifts to leave it as a draft.
+        </div>
+      )}
 
       <div>
         <table className="w-full table-fixed border-separate border-spacing-0 text-sm">
@@ -139,27 +176,49 @@ export function ShiftGrid({
                 {dayList.map((d) => {
                   const dayKey = format(d, "yyyy-MM-dd");
                   const cellShifts = shiftLookup.get(`__open__|${dayKey}`) ?? [];
+                  const dupKey = `open|${dayKey}`;
+                  const isDupHover = duplicateMode && dragOverKey === dupKey;
+                  const onOpenCellDragOver = (e: React.DragEvent) => {
+                    if (!duplicateMode || !dragShiftId) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "copy";
+                    if (dragOverKey !== dupKey) setDragOverKey(dupKey);
+                  };
+                  const onOpenCellDrop = async (e: React.DragEvent) => {
+                    if (!duplicateMode || !onDuplicate) return;
+                    e.preventDefault();
+                    const sid = e.dataTransfer.getData("text/plain");
+                    setDragShiftId(null);
+                    setDragOverKey(null);
+                    if (!sid) return;
+                    await onDuplicate(sid, dayKey, null);
+                  };
                   return (
                     <td
                       key={dayKey}
-                      className="border-b border-ink-100 bg-amber-50/30 px-0.5 py-1.5 align-top sm:px-1.5 sm:py-2 lg:px-2"
+                      onDragOver={onOpenCellDragOver}
+                      onDrop={onOpenCellDrop}
+                      className={`border-b border-ink-100 px-0.5 py-1.5 align-top sm:px-1.5 sm:py-2 lg:px-2 ${
+                        isDupHover ? "bg-brand-100/70" : "bg-amber-50/30"
+                      }`}
                     >
                       <div className="space-y-1">
                         {cellShifts.map((s) => (
                           <ShiftPill
                             key={s.id}
                             shift={s}
-                            draggable={Boolean(onAssign)}
+                            draggable={duplicateMode || Boolean(onAssign)}
                             onClick={onShiftClick ? () => onShiftClick(s) : undefined}
                             onDragStart={(e) => {
                               if (!s.id) return;
-                              e.dataTransfer.effectAllowed = "move";
+                              e.dataTransfer.effectAllowed = duplicateMode ? "copy" : "move";
                               e.dataTransfer.setData("text/plain", s.id);
                               setDragShiftId(s.id);
                             }}
                             onDragEnd={() => {
                               setDragShiftId(null);
                               setDragOverNurseId(null);
+                              setDragOverKey(null);
                             }}
                           />
                         ))}
@@ -171,34 +230,60 @@ export function ShiftGrid({
             )}
 
             {nurses.map((nurse) => {
-              const isDropTarget =
-                onAssign && dragShiftId && dragOverNurseId === nurse.id;
+              const isAssignDropTarget =
+                !duplicateMode &&
+                onAssign &&
+                dragShiftId &&
+                dragOverNurseId === nurse.id;
               const dragShift = dragShiftId
                 ? shifts.find((s) => s.id === dragShiftId)
                 : null;
-              const compatible =
+              const compatibleForAssign =
                 !dragShift || dragShift.role === nurse.role;
-              const rowHighlight = isDropTarget
-                ? compatible
+              const compatibleForDuplicate =
+                !dragShift || dragShift.role === nurse.role;
+              const rowHighlight = isAssignDropTarget
+                ? compatibleForAssign
                   ? "bg-emerald-50/60"
                   : "bg-rose-50/40"
                 : "hover:bg-ink-50/40";
 
-              const onCellDragOver = (e: React.DragEvent) => {
-                if (!onAssign || !dragShiftId) return;
+              const onCellDragOver = (
+                e: React.DragEvent,
+                dayKey: string,
+              ) => {
+                if (!dragShiftId) return;
+                if (duplicateMode) {
+                  if (!onDuplicate || !compatibleForDuplicate) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "copy";
+                  const k = `${nurse.id}|${dayKey}`;
+                  if (dragOverKey !== k) setDragOverKey(k);
+                  return;
+                }
+                if (!onAssign) return;
                 e.preventDefault();
-                e.dataTransfer.dropEffect = compatible ? "move" : "none";
+                e.dataTransfer.dropEffect = compatibleForAssign ? "move" : "none";
                 if (dragOverNurseId !== nurse.id) {
                   setDragOverNurseId(nurse.id ?? null);
                 }
               };
-              const onCellDrop = async (e: React.DragEvent) => {
-                if (!onAssign) return;
+              const onCellDrop = async (
+                e: React.DragEvent,
+                dayKey: string,
+              ) => {
                 e.preventDefault();
                 const shiftId = e.dataTransfer.getData("text/plain");
                 setDragShiftId(null);
                 setDragOverNurseId(null);
+                setDragOverKey(null);
                 if (!shiftId || !nurse.id) return;
+                if (duplicateMode) {
+                  if (!onDuplicate || !compatibleForDuplicate) return;
+                  await onDuplicate(shiftId, dayKey, nurse.id);
+                  return;
+                }
+                if (!onAssign) return;
                 await onAssign(shiftId, nurse.id);
               };
 
@@ -222,12 +307,17 @@ export function ShiftGrid({
                   {dayList.map((d) => {
                     const dayKey = format(d, "yyyy-MM-dd");
                     const cellShifts = shiftLookup.get(`${nurse.id}|${dayKey}`) ?? [];
+                    const cellDupKey = `${nurse.id}|${dayKey}`;
+                    const isCellDupHover =
+                      duplicateMode && dragOverKey === cellDupKey;
                     return (
                       <td
                         key={dayKey}
-                        onDragOver={onCellDragOver}
-                        onDrop={onCellDrop}
-                        className="border-b border-ink-100 px-0.5 py-1.5 align-top sm:px-1.5 sm:py-2 lg:px-2"
+                        onDragOver={(e) => onCellDragOver(e, dayKey)}
+                        onDrop={(e) => onCellDrop(e, dayKey)}
+                        className={`border-b border-ink-100 px-0.5 py-1.5 align-top sm:px-1.5 sm:py-2 lg:px-2 ${
+                          isCellDupHover ? "bg-emerald-100/60" : ""
+                        }`}
                       >
                         <div className="space-y-1">
                           {cellShifts.map((s) => (
@@ -235,16 +325,22 @@ export function ShiftGrid({
                               key={s.id}
                               shift={s}
                               onClick={onShiftClick ? () => onShiftClick(s) : undefined}
-                              draggable={Boolean(onAssign) && s.status === "confirmed"}
+                              draggable={
+                                duplicateMode ||
+                                (Boolean(onAssign) && s.status === "confirmed")
+                              }
                               onDragStart={(e) => {
                                 if (!s.id) return;
-                                e.dataTransfer.effectAllowed = "move";
+                                e.dataTransfer.effectAllowed = duplicateMode
+                                  ? "copy"
+                                  : "move";
                                 e.dataTransfer.setData("text/plain", s.id);
                                 setDragShiftId(s.id);
                               }}
                               onDragEnd={() => {
                                 setDragShiftId(null);
                                 setDragOverNurseId(null);
+                                setDragOverKey(null);
                               }}
                             />
                           ))}

@@ -4,8 +4,9 @@ import { FormEvent, useState } from "react";
 import { addDoc, doc, serverTimestamp, Timestamp, updateDoc } from "firebase/firestore";
 import toast from "react-hot-toast";
 import { Loader2 } from "lucide-react";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { facilitiesCol } from "@/lib/collections";
+import { generatePortalToken } from "@/lib/utils";
 import type { Facility, ShiftTemplate } from "@/types";
 
 const DEFAULT_TEMPLATES: ShiftTemplate[] = [
@@ -77,11 +78,25 @@ export function FacilityForm({
         await updateDoc(doc(db, "facilities", facility.id), payload);
         toast.success("Facility updated");
       } else {
-        await addDoc(facilitiesCol, {
+        const portalToken = generatePortalToken();
+        const ref = await addDoc(facilitiesCol, {
           ...payload,
+          portalToken,
           createdAt: serverTimestamp() as unknown as Timestamp,
         });
         toast.success("Facility added");
+        // Fire-and-forget: text the magic-link to the facility's contact phone.
+        if (form.contactPhone) {
+          const idToken = await auth.currentUser?.getIdToken();
+          fetch(`/api/facility/${ref.id}/send-portal-link`, {
+            method: "POST",
+            headers: idToken ? { Authorization: `Bearer ${idToken}` } : undefined,
+          })
+            .then(async (res) => {
+              if (res.ok) toast.success("Portal link sent to contact phone");
+            })
+            .catch(() => {});
+        }
       }
       onSaved?.();
       onClose();

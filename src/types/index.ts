@@ -63,6 +63,8 @@ export interface Facility {
   billingRate?: number;
   shiftTemplates: ShiftTemplate[];
   active: boolean;
+  // Long random token. Possessing it grants access to this facility's portal.
+  portalToken?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

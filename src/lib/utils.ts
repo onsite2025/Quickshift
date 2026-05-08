@@ -41,3 +41,15 @@ export const formatShiftDateLabel = (d: Date): string =>
     day: "numeric",
     timeZone: "UTC",
   });
+
+// Random 192-bit token, hex-encoded. Used as the unguessable secret in
+// /f/<token> magic links. Browser-safe.
+export const generatePortalToken = (): string => {
+  const arr = new Uint8Array(24);
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    crypto.getRandomValues(arr);
+  } else {
+    for (let i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 256);
+  }
+  return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
+};
